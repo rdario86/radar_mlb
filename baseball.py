@@ -1,0 +1,281 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import statsapi
+import time
+import datetime
+import calendar
+from sklearn.ensemble import RandomForestClassifier
+
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
+
+st.title("⚾ Predicción MLB: Radar Diario Automatizado")
+st.markdown("Proyección Sabermétrica basada en Elo, Racha, H2H y Momento Ofensivo.")
+st.markdown("---")
+
+# --- PARÁMETROS SABERMÉTRICOS FIJOS ---
+MAX_DEPTH_ELO = 5       
+PESO_RACHA = 0.10       
+PESO_H2H = 0.15         
+
+MLB_TEAM_WHITELIST = [
+    "Arizona Diamondbacks", "Atlanta Braves", "Baltimore Orioles", "Boston Red Sox", 
+    "Chicago Cubs", "Chicago White Sox", "Cincinnati Reds", "Cleveland Guardians", 
+    "Colorado Rockies", "Detroit Tigers", "Houston Astros", "Kansas City Royals", 
+    "Los Angeles Angels", "Los Angeles Dodgers", "Miami Marlins", "Milwaukee Brewers", 
+    "Minnesota Twins", "New York Mets", "New York Yankees", "Athletics", 
+    "Philadelphia Phillies", "Pittsburgh Pirates", "San Diego Padres", "San Francisco Giants", 
+    "Seattle Mariners", "St. Louis Cardinals", "Tampa Bay Rays", "Texas Rangers", 
+    "Toronto Blue Jays", "Washington Nationals"
+]
+
+# --- FUNCIONES DE APOYO ---
+def get_recent_form(team, df, n=10):
+    team_games = df[(df['Local'] == team) | (df['Visitante'] == team)].tail(n)
+    if len(team_games) == 0: return 0.5
+    wins = sum(1 for _, row in team_games.iterrows() 
+               if (row['Local'] == team and row['Carreras_Local'] > row['Carreras_Visitante']) or 
+                  (row['Visitante'] == team and row['Carreras_Visitante'] > row['Carreras_Local']))
+    return wins / len(team_games)
+
+def get_h2h_wins(team_a, team_b, df, n=5):
+    h2h = df[((df['Local'] == team_a) & (df['Visitante'] == team_b)) | 
+             ((df['Local'] == team_b) & (df['Visitante'] == team_a))]
+    last_5 = h2h.tail(n)
+    if len(last_5) == 0: return 0.5
+    wins = sum(1 for _, row in last_5.iterrows() 
+               if (row['Local'] == team_a and row['Carreras_Local'] > row['Carreras_Visitante']) or 
+                  (row['Visitante'] == team_a and row['Carreras_Visitante'] > row['Carreras_Local']))
+    return wins / len(last_5)
+
+def get_run_metrics(team, df, n=10):
+    team_games = df[(df['Local'] == team) | (df['Visitante'] == team)].tail(n)
+    if len(team_games) == 0: return 4.5, 4.5
+    runs_scored = sum(row['Carreras_Local'] if row['Local'] == team else row['Carreras_Visitante'] for _, row in team_games.iterrows())
+    runs_allowed = sum(row['Carreras_Visitante'] if row['Local'] == team else row['Carreras_Local'] for _, row in team_games.iterrows())
+    return runs_scored / len(team_games), runs_allowed / len(team_games)
+
+def get_team_record(team, df):
+    wins = sum((df['Local'] == team) & (df['Carreras_Local'] > df['Carreras_Visitante'])) + \
+           sum((df['Visitante'] == team) & (df['Carreras_Visitante'] > df['Carreras_Local']))
+    losses = sum((df['Local'] == team) & (df['Carreras_Local'] < df['Carreras_Visitante'])) + \
+             sum((df['Visitante'] == team) & (df['Carreras_Visitante'] < df['Carreras_Local']))
+    return f"{wins}-{losses}"
+
+# --- FUNCIÓN DE SEMAFORIZACIÓN (ESTILO) CORREGIDA ---
+def aplicar_semaforo_confianza(row):
+    styles = [''] * len(row)
+    ganador = row['🏆 Proyección']
+    prob = int(str(row['📊 Prob.']).replace('%', ''))
+    
+    for i, col in enumerate(row.index):
+        # Aplicar estilo estrictamente a la columna '🏆 Proyección'
+        if col == '🏆 Proyección':
+            if (ganador in row['✈️ Visitante'] and prob >= 55) or (ganador in row['🏠 Local'] and prob >= 65):
+                styles[i] = 'background-color: #198754; color: white; font-weight: bold;'
+                
+    return styles
+
+# --- ESTADO DE SESIÓN ---
+if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
+if 'fecha_hoy' not in st.session_state: st.session_state.fecha_hoy = datetime.date.today().strftime('%Y-%m-%d')
+
+# --- BARRA LATERAL: MOTOR DE DATOS ---
+st.sidebar.markdown("### 📥 Sincronización")
+anio_sel = st.sidebar.selectbox("Temporada a procesar:", [2026, 2025, 2024])
+
+if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
+    with st.spinner("Actualizando base de datos central... (Esto tomará un minuto)"):
+        try:
+            fechas = []
+            for m in range(3, 11):
+                last_day = calendar.monthrange(anio_sel, m)[1]
+                fechas.append((f"{anio_sel}-{m:02d}-01", f"{anio_sel}-{m:02d}-{last_day}"))
+                
+            data_total = []
+            for start, end in fechas:
+                batch = statsapi.schedule(start_date=start, end_date=end, sportId=1)
+                if batch: data_total.extend(batch)
+                time.sleep(0.5)
+            
+            df = pd.DataFrame(data_total)
+            df = df[df['status'] == 'Final'].copy()
+            
+            if 'game_type' in df.columns:
+                df = df[df['game_type'].isin(['R', 'P'])]
+                
+            df = df[['home_name', 'away_name', 'home_score', 'away_score', 'game_date']]
+            df.columns = ['Local', 'Visitante', 'Carreras_Local', 'Carreras_Visitante', 'Date']
+            df = df[df['Local'].isin(MLB_TEAM_WHITELIST) & df['Visitante'].isin(MLB_TEAM_WHITELIST)]
+            
+            elo_dict = {team: 1500.0 for team in MLB_TEAM_WHITELIST}
+            h_elo_l, h_elo_v = [], []
+            for _, row in df.iterrows():
+                l, v = row['Local'], row['Visitante']
+                el, ev = elo_dict[l], elo_dict[v]
+                h_elo_l.append(el); h_elo_v.append(ev)
+                diff = 1 / (1 + 10 ** ((ev - el) / 400))
+                res = 1.0 if row['Carreras_Local'] > row['Carreras_Visitante'] else 0.0
+                elo_dict[l] += 6 * (res - diff)
+                elo_dict[v] += 6 * ((1 - res) - (1 - diff))
+            
+            df['Elo_L'], df['Elo_V'] = h_elo_l, h_elo_v
+            st.session_state.df_mlb = df
+            st.sidebar.success("✅ Base de datos al día. Juegos de exhibición purgados.")
+        except Exception as e: st.sidebar.error(f"Error: {e}")
+
+# --- ÁREA PRINCIPAL ---
+if st.session_state.df_mlb is not None:
+    df = st.session_state.df_mlb.copy()
+    
+    # Entrenar el modelo
+    df['Win'] = (df['Carreras_Local'] > df['Carreras_Visitante']).astype(int)
+    clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df[['Elo_L', 'Elo_V']], df['Win'])
+    
+    # Pestañas (Tabs)
+    tab1, tab2 = st.tabs(["📅 Cartelera Automática (Hoy)", "🔍 Análisis Manual"])
+    
+    with tab1:
+        st.markdown(f"### 🎯 Partidos programados para hoy: **{st.session_state.fecha_hoy}**")
+        
+        if st.button("⚡ Analizar Jornada Completa", type="primary", use_container_width=True):
+            with st.spinner("Escaneando el calendario y calculando proyecciones..."):
+                juegos_hoy = statsapi.schedule(date=st.session_state.fecha_hoy, sportId=1)
+                
+                if not juegos_hoy:
+                    st.warning("No hay juegos oficiales programados para la fecha de hoy.")
+                else:
+                    resultados_jornada = []
+                    equipos_procesados = set() 
+                    
+                    for juego in juegos_hoy:
+                        e_local = juego['home_name']
+                        e_visita = juego['away_name']
+                        
+                        if e_local not in MLB_TEAM_WHITELIST or e_visita not in MLB_TEAM_WHITELIST:
+                            continue
+                            
+                        if e_local in equipos_procesados or e_visita in equipos_procesados:
+                            continue
+                        
+                        equipos_procesados.add(e_local)
+                        equipos_procesados.add(e_visita)
+                            
+                        # Extracción de variables y récord
+                        rec_l = get_team_record(e_local, df)
+                        rec_v = get_team_record(e_visita, df)
+                        
+                        elo_l = df[df['Local'] == e_local].tail(1)['Elo_L'].values[0] if len(df[df['Local'] == e_local]) > 0 else 1500
+                        elo_v = df[df['Visitante'] == e_visita].tail(1)['Elo_V'].values[0] if len(df[df['Visitante'] == e_visita]) > 0 else 1500
+                        
+                        elo_l += 35 
+                        racha_l = get_recent_form(e_local, df)
+                        racha_v = get_recent_form(e_visita, df)
+                        h2h = get_h2h_wins(e_local, e_visita, df)
+                        
+                        # Predicción
+                        prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
+                        prob_final_local = prob + (racha_l - racha_v) * PESO_RACHA + (h2h - 0.5) * PESO_H2H
+                        
+                        if prob_final_local > 0.5:
+                            ganador = e_local
+                            pct_bruto = prob_final_local
+                        else:
+                            ganador = e_visita
+                            pct_bruto = 1.0 - prob_final_local
+                            
+                        pct_final = int(round(max(min(pct_bruto, 0.99), 0.01) * 100))
+                        
+                        # Carreras
+                        rs_l, ra_l = get_run_metrics(e_local, df, 10)
+                        rs_v, ra_v = get_run_metrics(e_visita, df, 10)
+                        
+                        c_l = int(max(0, round(((rs_l + ra_v) / 2.0) + 0.3)))
+                        c_v = int(max(0, round(((rs_v + ra_l) / 2.0) - 0.3)))
+                        
+                        if prob_final_local > 0.5 and c_l <= c_v: c_l = c_v + 1
+                        elif prob_final_local <= 0.5 and c_v <= c_l: c_v = c_l + 1
+                        
+                        resultados_jornada.append({
+                            "✈️ Visitante": f"{e_visita} ({rec_v})",
+                            "🏠 Local": f"{e_local} ({rec_l})",
+                            "🏆 Proyección": ganador,
+                            "📊 Prob.": f"{pct_final}%",
+                            "🎯 Marcador": f"{c_v} - {c_l}"
+                        })
+                    
+                    if resultados_jornada:
+                        df_resultados = pd.DataFrame(resultados_jornada)
+                        
+                        # Aplicar estilo al DataFrame
+                        df_estilizado = df_resultados.style.apply(aplicar_semaforo_confianza, axis=1)
+                        
+                        st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
+                        st.success("✅ Análisis completado. Apuestas de alta confianza resaltadas en verde.")
+                    else:
+                        st.info("No se encontraron partidos válidos en la lista oficial para hoy.")
+
+    with tab2:
+        st.markdown("### 🔍 Análisis Detallado (Partido Único)")
+        equipos = sorted(list(set(df['Local'].unique()) | set(df['Visitante'].unique())))
+        
+        c1, c2 = st.columns(2)
+        with c1: e_local_manual = st.selectbox("🏠 Equipo Local:", equipos, key="loc_man")
+        with c2: e_visita_manual = st.selectbox("✈️ Equipo Visitante:", [e for e in equipos if e != e_local_manual], key="vis_man")
+
+        if st.button("🚀 Lanzar Proyección Individual"):
+            rec_l = get_team_record(e_local_manual, df)
+            rec_v = get_team_record(e_visita_manual, df)
+            
+            elo_l = df[df['Local'] == e_local_manual].tail(1)['Elo_L'].values[0] if len(df[df['Local'] == e_local_manual]) > 0 else 1500
+            elo_v = df[df['Visitante'] == e_visita_manual].tail(1)['Elo_V'].values[0] if len(df[df['Visitante'] == e_visita_manual]) > 0 else 1500
+            
+            elo_l += 35 
+            racha_l = get_recent_form(e_local_manual, df)
+            racha_v = get_recent_form(e_visita_manual, df)
+            h2h = get_h2h_wins(e_local_manual, e_visita_manual, df)
+            
+            prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
+            prob_final_local = prob + (racha_l - racha_v) * PESO_RACHA + (h2h - 0.5) * PESO_H2H
+            
+            if prob_final_local > 0.5:
+                ganador = e_local_manual
+                porcentaje_bruto = prob_final_local
+            else:
+                ganador = e_visita_manual
+                porcentaje_bruto = 1.0 - prob_final_local
+                
+            porcentaje_entero = int(round(max(min(porcentaje_bruto, 0.99), 0.01) * 100))
+            
+            rs_l, ra_l = get_run_metrics(e_local_manual, df, 10)
+            rs_v, ra_v = get_run_metrics(e_visita_manual, df, 10)
+            
+            c_l = int(max(0, round(((rs_l + ra_v) / 2.0) + 0.3)))
+            c_v = int(max(0, round(((rs_v + ra_l) / 2.0) - 0.3)))
+            
+            if prob_final_local > 0.5 and c_l <= c_v: c_l = c_v + 1
+            elif prob_final_local <= 0.5 and c_v <= c_l: c_v = c_l + 1
+            
+            st.markdown("### 📊 Pizarra de Proyección")
+            
+            if (ganador == e_visita_manual and porcentaje_entero >= 55) or (ganador == e_local_manual and porcentaje_entero >= 65):
+                st.success("🟢 ESTA PROYECCIÓN CUMPLE CON EL UMBRAL DE ALTA CONFIANZA")
+                
+            k1, k2, k3 = st.columns(3)
+            k1.metric("🏆 Ganador Proyectado", ganador, f"{porcentaje_entero}%")
+            k2.metric(f"🏠 {e_local_manual} ({rec_l})", str(c_l))
+            k3.metric(f"✈️ {e_visita_manual} ({rec_v})", str(c_v))
+
+    # --- VISOR DE DATOS ---
+    st.markdown("---")
+    with st.expander("🗃️ Explorador de Base de Datos (Auditoría Histórica)"):
+        df_visor = df[['Date', 'Local', 'Visitante', 'Carreras_Local', 'Carreras_Visitante', 'Elo_L', 'Elo_V']].copy()
+        df_visor['Carreras_Local'] = df_visor['Carreras_Local'].astype(int)
+        df_visor['Carreras_Visitante'] = df_visor['Carreras_Visitante'].astype(int)
+        df_visor['Elo_L'] = df_visor['Elo_L'].round().astype(int)
+        df_visor['Elo_V'] = df_visor['Elo_V'].round().astype(int)
+        
+        st.dataframe(df_visor, use_container_width=True, hide_index=True)
+else:
+    st.info("👈 Presiona 'Descargar Historial Base' en la barra lateral para encender el motor predictivo.")
