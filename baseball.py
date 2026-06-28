@@ -11,13 +11,15 @@ from sklearn.ensemble import RandomForestClassifier
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
-st.markdown("Proyección Sabermétrica basada en Elo, Racha, H2H y Momento Ofensivo.")
+st.markdown("Proyección Sabermétrica: Elo, Racha, H2H, Pitagórico y Rendimiento Dividido")
 st.markdown("---")
 
 # --- PARÁMETROS SABERMÉTRICOS FIJOS ---
 MAX_DEPTH_ELO = 5       
-PESO_RACHA = 0.10       
-PESO_H2H = 0.15         
+PESO_RACHA = 0.08       
+PESO_H2H = 0.12         
+PESO_PITAGORICO = 0.10  # Importancia de la corrección matemática por "suerte"
+PESO_SPLITS = 0.10      # Importancia del rendimiento situacional (Casa/Ruta)
 
 MLB_TEAM_WHITELIST = [
     "Arizona Diamondbacks", "Atlanta Braves", "Baltimore Orioles", "Boston Red Sox", 
@@ -63,14 +65,43 @@ def get_team_record(team, df):
              sum((df['Visitante'] == team) & (df['Carreras_Visitante'] < df['Carreras_Local']))
     return f"{wins}-{losses}"
 
-# --- FUNCIÓN DE SEMAFORIZACIÓN (ESTILO) CORREGIDA ---
+# NUEVA FUNCIÓN: Teorema Pitagórico (Expectativa vs Realidad)
+def get_pythagorean_luck(team, df):
+    team_games = df[(df['Local'] == team) | (df['Visitante'] == team)]
+    if len(team_games) == 0: return 0.0
+    
+    rs = sum(row['Carreras_Local'] if row['Local'] == team else row['Carreras_Visitante'] for _, row in team_games.iterrows())
+    ra = sum(row['Carreras_Visitante'] if row['Local'] == team else row['Carreras_Local'] for _, row in team_games.iterrows())
+    
+    if rs + ra == 0: return 0.0
+    
+    # Exponente estándar en sabermetría moderna (1.83)
+    exp = 1.83
+    pyth_exp = (rs**exp) / ((rs**exp) + (ra**exp)) if (rs**exp + ra**exp) > 0 else 0.5
+    
+    wins = sum(1 for _, row in team_games.iterrows() 
+               if (row['Local'] == team and row['Carreras_Local'] > row['Carreras_Visitante']) or 
+                  (row['Visitante'] == team and row['Carreras_Visitante'] > row['Carreras_Local']))
+    actual_win_pct = wins / len(team_games)
+    
+    return pyth_exp - actual_win_pct
+
+# NUEVA FUNCIÓN: Rendimiento Dividido (Splits)
+def get_splits_win_pct(home_team, away_team, df):
+    home_games = df[df['Local'] == home_team]
+    home_win_pct = sum(1 for _, row in home_games.iterrows() if row['Carreras_Local'] > row['Carreras_Visitante']) / len(home_games) if len(home_games) > 0 else 0.5
+    
+    away_games = df[df['Visitante'] == away_team]
+    away_win_pct = sum(1 for _, row in away_games.iterrows() if row['Carreras_Visitante'] > row['Carreras_Local']) / len(away_games) if len(away_games) > 0 else 0.5
+    
+    return home_win_pct, away_win_pct
+
 def aplicar_semaforo_confianza(row):
     styles = [''] * len(row)
     ganador = row['🏆 Proyección']
     prob = int(str(row['📊 Prob.']).replace('%', ''))
     
     for i, col in enumerate(row.index):
-        # Aplicar estilo estrictamente a la columna '🏆 Proyección'
         if col == '🏆 Proyección':
             if (ganador in row['✈️ Visitante'] and prob >= 55) or (ganador in row['🏠 Local'] and prob >= 65):
                 styles[i] = 'background-color: #198754; color: white; font-weight: bold;'
@@ -129,18 +160,16 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
 if st.session_state.df_mlb is not None:
     df = st.session_state.df_mlb.copy()
     
-    # Entrenar el modelo
     df['Win'] = (df['Carreras_Local'] > df['Carreras_Visitante']).astype(int)
     clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df[['Elo_L', 'Elo_V']], df['Win'])
     
-    # Pestañas (Tabs)
     tab1, tab2 = st.tabs(["📅 Cartelera Automática (Hoy)", "🔍 Análisis Manual"])
     
     with tab1:
         st.markdown(f"### 🎯 Partidos programados para hoy: **{st.session_state.fecha_hoy}**")
         
         if st.button("⚡ Analizar Jornada Completa", type="primary", use_container_width=True):
-            with st.spinner("Escaneando el calendario y calculando proyecciones..."):
+            with st.spinner("Escaneando el calendario y calculando proyecciones con matriz pitagórica..."):
                 juegos_hoy = statsapi.schedule(date=st.session_state.fecha_hoy, sportId=1)
                 
                 if not juegos_hoy:
@@ -162,7 +191,6 @@ if st.session_state.df_mlb is not None:
                         equipos_procesados.add(e_local)
                         equipos_procesados.add(e_visita)
                             
-                        # Extracción de variables y récord
                         rec_l = get_team_record(e_local, df)
                         rec_v = get_team_record(e_visita, df)
                         
@@ -170,13 +198,24 @@ if st.session_state.df_mlb is not None:
                         elo_v = df[df['Visitante'] == e_visita].tail(1)['Elo_V'].values[0] if len(df[df['Visitante'] == e_visita]) > 0 else 1500
                         
                         elo_l += 35 
+                        
+                        # Variables Contextuales
                         racha_l = get_recent_form(e_local, df)
                         racha_v = get_recent_form(e_visita, df)
                         h2h = get_h2h_wins(e_local, e_visita, df)
                         
-                        # Predicción
+                        # Nuevas Variables Analíticas
+                        luck_l = get_pythagorean_luck(e_local, df)
+                        luck_v = get_pythagorean_luck(e_visita, df)
+                        split_l, split_v = get_splits_win_pct(e_local, e_visita, df)
+                        
+                        # Modelo Predictivo Consolidado
                         prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
-                        prob_final_local = prob + (racha_l - racha_v) * PESO_RACHA + (h2h - 0.5) * PESO_H2H
+                        prob_final_local = (prob + 
+                                            (racha_l - racha_v) * PESO_RACHA + 
+                                            (h2h - 0.5) * PESO_H2H + 
+                                            (luck_l - luck_v) * PESO_PITAGORICO + 
+                                            (split_l - split_v) * PESO_SPLITS)
                         
                         if prob_final_local > 0.5:
                             ganador = e_local
@@ -187,7 +226,6 @@ if st.session_state.df_mlb is not None:
                             
                         pct_final = int(round(max(min(pct_bruto, 0.99), 0.01) * 100))
                         
-                        # Carreras
                         rs_l, ra_l = get_run_metrics(e_local, df, 10)
                         rs_v, ra_v = get_run_metrics(e_visita, df, 10)
                         
@@ -207,10 +245,7 @@ if st.session_state.df_mlb is not None:
                     
                     if resultados_jornada:
                         df_resultados = pd.DataFrame(resultados_jornada)
-                        
-                        # Aplicar estilo al DataFrame
                         df_estilizado = df_resultados.style.apply(aplicar_semaforo_confianza, axis=1)
-                        
                         st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
                         st.success("✅ Análisis completado. Apuestas de alta confianza resaltadas en verde.")
                     else:
@@ -232,12 +267,20 @@ if st.session_state.df_mlb is not None:
             elo_v = df[df['Visitante'] == e_visita_manual].tail(1)['Elo_V'].values[0] if len(df[df['Visitante'] == e_visita_manual]) > 0 else 1500
             
             elo_l += 35 
+            
             racha_l = get_recent_form(e_local_manual, df)
             racha_v = get_recent_form(e_visita_manual, df)
             h2h = get_h2h_wins(e_local_manual, e_visita_manual, df)
+            luck_l = get_pythagorean_luck(e_local_manual, df)
+            luck_v = get_pythagorean_luck(e_visita_manual, df)
+            split_l, split_v = get_splits_win_pct(e_local_manual, e_visita_manual, df)
             
             prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
-            prob_final_local = prob + (racha_l - racha_v) * PESO_RACHA + (h2h - 0.5) * PESO_H2H
+            prob_final_local = (prob + 
+                                (racha_l - racha_v) * PESO_RACHA + 
+                                (h2h - 0.5) * PESO_H2H + 
+                                (luck_l - luck_v) * PESO_PITAGORICO + 
+                                (split_l - split_v) * PESO_SPLITS)
             
             if prob_final_local > 0.5:
                 ganador = e_local_manual
