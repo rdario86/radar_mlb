@@ -120,7 +120,7 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
     with st.spinner("Actualizando base de datos central... (Esto tomará un minuto)"):
         try:
             fechas = []
-            for m in range(3, 11):
+            for m in range(3, 12):
                 last_day = calendar.monthrange(anio_sel, m)[1]
                 fechas.append((f"{anio_sel}-{m:02d}-01", f"{anio_sel}-{m:02d}-{last_day}"))
                 
