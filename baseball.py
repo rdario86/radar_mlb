@@ -153,7 +153,7 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
             
             df['Elo_L'], df['Elo_V'] = h_elo_l, h_elo_v
             st.session_state.df_mlb = df
-            st.sidebar.success("✅ Base de datos al día. Juegos de exhibición purgados.")
+            st.sidebar.success("✅ Base de datos al día. Juegos de exhibición purgados")
         except Exception as e: st.sidebar.error(f"Error: {e}")
 
 # --- ÁREA PRINCIPAL ---
@@ -239,15 +239,14 @@ if st.session_state.df_mlb is not None:
                             "✈️ Visitante": f"{e_visita} ({rec_v})",
                             "🏠 Local": f"{e_local} ({rec_l})",
                             "🏆 Proyección": ganador,
-                            "📊 Prob.": f"{pct_final}%",
-                            "🎯 Marcador": f"{c_v} - {c_l}"
+                            "📊 Prob.": f"{pct_final}%"
                         })
                     
                     if resultados_jornada:
                         df_resultados = pd.DataFrame(resultados_jornada)
                         df_estilizado = df_resultados.style.apply(aplicar_semaforo_confianza, axis=1)
                         st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
-                        st.success("✅ Análisis completado. Apuestas de alta confianza resaltadas en verde.")
+                        st.success("✅ Análisis completado. Apuestas de alta confianza resaltadas en verde")
                     else:
                         st.info("No se encontraron partidos válidos en la lista oficial para hoy.")
 
@@ -290,25 +289,14 @@ if st.session_state.df_mlb is not None:
                 porcentaje_bruto = 1.0 - prob_final_local
                 
             porcentaje_entero = int(round(max(min(porcentaje_bruto, 0.99), 0.01) * 100))
-            
-            rs_l, ra_l = get_run_metrics(e_local_manual, df, 10)
-            rs_v, ra_v = get_run_metrics(e_visita_manual, df, 10)
-            
-            c_l = int(max(0, round(((rs_l + ra_v) / 2.0) + 0.3)))
-            c_v = int(max(0, round(((rs_v + ra_l) / 2.0) - 0.3)))
-            
-            if prob_final_local > 0.5 and c_l <= c_v: c_l = c_v + 1
-            elif prob_final_local <= 0.5 and c_v <= c_l: c_v = c_l + 1
-            
+                      
             st.markdown("### 📊 Pizarra de Proyección")
             
             if (ganador == e_visita_manual and porcentaje_entero >= 55) or (ganador == e_local_manual and porcentaje_entero >= 65):
                 st.success("🟢 ESTA PROYECCIÓN CUMPLE CON EL UMBRAL DE ALTA CONFIANZA")
                 
-            k1, k2, k3 = st.columns(3)
-            k1.metric("🏆 Ganador Proyectado", ganador, f"{porcentaje_entero}%")
-            k2.metric(f"🏠 {e_local_manual} ({rec_l})", str(c_l))
-            k3.metric(f"✈️ {e_visita_manual} ({rec_v})", str(c_v))
+            # Mostramos únicamente el ganador y su probabilidad
+            st.metric("🏆 Ganador Proyectado", ganador, f"{porcentaje_entero}%")
 
     # --- VISOR DE DATOS ---
     st.markdown("---")
@@ -321,4 +309,4 @@ if st.session_state.df_mlb is not None:
         
         st.dataframe(df_visor, use_container_width=True, hide_index=True)
 else:
-    st.info("👈 Presiona 'Descargar Historial Base' en la barra lateral para encender el motor predictivo.")
+    st.info("👈 Presiona 'Descargar Historial Base' en la barra lateral para encender el motor predictivo")
