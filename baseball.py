@@ -374,7 +374,7 @@ if st.session_state.df_mlb is not None:
             k1, k2, k3 = st.columns(3)
             k1.metric(f"✈️ {e_visita_manual} (Visita)", f"{c_v:.2f} Carreras")
             k2.metric(f"🏠 {e_local_manual} (Local)", f"{c_l:.2f} Carreras")
-            k3.metric(f"Línea de Las Vegas: {LINEA_TOTALES}", f"Carreras Proyectadas: {total_runs:.2f}")
+            k3.metric(f"Línea de Las Vegas: {LINEA_TOTALES}", f"Total Carreras: {total_runs:.2f}")
 
     # --- VISOR DE DATOS ---
     st.markdown("---")
