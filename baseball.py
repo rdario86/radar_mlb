@@ -11,15 +11,16 @@ from sklearn.ensemble import RandomForestClassifier
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
-st.markdown("Proyección Sabermétrica: Elo, Racha, H2H, Pitagórico y Rendimiento Dividido")
+st.markdown("Proyección Sabermétrica: Elo, Racha, H2H, Pitagórico, Rendimiento Dividido y Totales Híbridos")
 st.markdown("---")
 
 # --- PARÁMETROS SABERMÉTRICOS FIJOS ---
 MAX_DEPTH_ELO = 5       
 PESO_RACHA = 0.08       
 PESO_H2H = 0.12         
-PESO_PITAGORICO = 0.10  # Importancia de la corrección matemática por "suerte"
-PESO_SPLITS = 0.10      # Importancia del rendimiento situacional (Casa/Ruta)
+PESO_PITAGORICO = 0.10  
+PESO_SPLITS = 0.10      
+LINEA_TOTALES = 8.5     
 
 MLB_TEAM_WHITELIST = [
     "Arizona Diamondbacks", "Atlanta Braves", "Baltimore Orioles", "Boston Red Sox", 
@@ -65,7 +66,7 @@ def get_team_record(team, df):
              sum((df['Visitante'] == team) & (df['Carreras_Visitante'] < df['Carreras_Local']))
     return f"{wins}-{losses}"
 
-# NUEVA FUNCIÓN: Teorema Pitagórico (Expectativa vs Realidad)
+# Teorema Pitagórico
 def get_pythagorean_luck(team, df):
     team_games = df[(df['Local'] == team) | (df['Visitante'] == team)]
     if len(team_games) == 0: return 0.0
@@ -75,7 +76,6 @@ def get_pythagorean_luck(team, df):
     
     if rs + ra == 0: return 0.0
     
-    # Exponente estándar en sabermetría moderna (1.83)
     exp = 1.83
     pyth_exp = (rs**exp) / ((rs**exp) + (ra**exp)) if (rs**exp + ra**exp) > 0 else 0.5
     
@@ -86,7 +86,7 @@ def get_pythagorean_luck(team, df):
     
     return pyth_exp - actual_win_pct
 
-# NUEVA FUNCIÓN: Rendimiento Dividido (Splits)
+# Rendimiento Dividido
 def get_splits_win_pct(home_team, away_team, df):
     home_games = df[df['Local'] == home_team]
     home_win_pct = sum(1 for _, row in home_games.iterrows() if row['Carreras_Local'] > row['Carreras_Visitante']) / len(home_games) if len(home_games) > 0 else 0.5
@@ -96,14 +96,62 @@ def get_splits_win_pct(home_team, away_team, df):
     
     return home_win_pct, away_win_pct
 
+# Proyección Híbrida
+def get_hybrid_run_projection(away_team, home_team, df):
+    rs_a_10, ra_a_10 = get_run_metrics(away_team, df, 10)
+    rs_h_10, ra_h_10 = get_run_metrics(home_team, df, 10)
+    
+    base_runs_away = (rs_a_10 + ra_h_10) / 2.0
+    base_runs_home = (rs_h_10 + ra_a_10) / 2.0
+
+    away_all = df[(df['Local'] == away_team) | (df['Visitante'] == away_team)]
+    if len(away_all) > 0:
+        away_rs_g = sum(row['Carreras_Visitante'] if row['Visitante'] == away_team else row['Carreras_Local'] for _, row in away_all.iterrows()) / len(away_all)
+    else: away_rs_g = 1.0
+        
+    home_all = df[(df['Local'] == home_team) | (df['Visitante'] == home_team)]
+    if len(home_all) > 0:
+        home_ra_g = sum(row['Carreras_Visitante'] if row['Local'] == home_team else row['Carreras_Local'] for _, row in home_all.iterrows()) / len(home_all)
+        home_rs_g = sum(row['Carreras_Local'] if row['Local'] == home_team else row['Carreras_Visitante'] for _, row in home_all.iterrows()) / len(home_all)
+    else: home_ra_g, home_rs_g = 1.0, 1.0
+
+    away_split = df[df['Visitante'] == away_team]
+    away_rs_s = away_split['Carreras_Visitante'].mean() if len(away_split) > 0 else away_rs_g
+    
+    home_split = df[df['Local'] == home_team]
+    home_ra_s = home_split['Carreras_Visitante'].mean() if len(home_split) > 0 else home_ra_g
+    home_rs_s = home_split['Carreras_Local'].mean() if len(home_split) > 0 else home_rs_g
+
+    m_off_away = away_rs_s / away_rs_g if away_rs_g > 0 else 1.0
+    m_def_home = home_ra_s / home_ra_g if home_ra_g > 0 else 1.0
+    m_off_home = home_rs_s / home_rs_g if home_rs_g > 0 else 1.0
+    
+    proj_away = base_runs_away * m_off_away * m_def_home
+    proj_home = base_runs_home * m_off_home * 1.0
+
+    return round(proj_away, 2), round(proj_home, 2)
+
 def aplicar_semaforo_confianza(row):
     styles = [''] * len(row)
     ganador = row['🏆 Proyección']
     prob = int(str(row['📊 Prob.']).replace('%', ''))
     
+    # Extraer el valor total proyectado de la celda
+    col_total = f"⚖️ Total ({LINEA_TOTALES})"
+    try:
+        total_val = float(str(row[col_total]).split('(')[1].replace(')', ''))
+    except:
+        total_val = LINEA_TOTALES
+    
     for i, col in enumerate(row.index):
+        # Semáforo para Ganador
         if col == '🏆 Proyección':
             if (ganador in row['✈️ Visitante'] and prob >= 55) or (ganador in row['🏠 Local'] and prob >= 65):
+                styles[i] = 'background-color: #198754; color: white; font-weight: bold;'
+        
+        # Semáforo para Totales (Alta/Baja)
+        elif col == col_total:
+            if total_val <= 7.5 or total_val >= 9.5:
                 styles[i] = 'background-color: #198754; color: white; font-weight: bold;'
                 
     return styles
@@ -169,7 +217,7 @@ if st.session_state.df_mlb is not None:
         st.markdown(f"### 🎯 Partidos programados para hoy: **{st.session_state.fecha_hoy}**")
         
         if st.button("⚡ Analizar Jornada Completa", type="primary", use_container_width=True):
-            with st.spinner("Escaneando el calendario y calculando proyecciones con matriz pitagórica..."):
+            with st.spinner("Escaneando el calendario y calculando proyecciones con matriz pitagórica y totales..."):
                 juegos_hoy = statsapi.schedule(date=st.session_state.fecha_hoy, sportId=1)
                 
                 if not juegos_hoy:
@@ -199,17 +247,13 @@ if st.session_state.df_mlb is not None:
                         
                         elo_l += 35 
                         
-                        # Variables Contextuales
                         racha_l = get_recent_form(e_local, df)
                         racha_v = get_recent_form(e_visita, df)
                         h2h = get_h2h_wins(e_local, e_visita, df)
-                        
-                        # Nuevas Variables Analíticas
                         luck_l = get_pythagorean_luck(e_local, df)
                         luck_v = get_pythagorean_luck(e_visita, df)
                         split_l, split_v = get_splits_win_pct(e_local, e_visita, df)
                         
-                        # Modelo Predictivo Consolidado
                         prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
                         prob_final_local = (prob + 
                                             (racha_l - racha_v) * PESO_RACHA + 
@@ -226,27 +270,35 @@ if st.session_state.df_mlb is not None:
                             
                         pct_final = int(round(max(min(pct_bruto, 0.99), 0.01) * 100))
                         
-                        rs_l, ra_l = get_run_metrics(e_local, df, 10)
-                        rs_v, ra_v = get_run_metrics(e_visita, df, 10)
+                        c_v, c_l = get_hybrid_run_projection(e_visita, e_local, df)
+                        total_runs = c_v + c_l
                         
-                        c_l = int(max(0, round(((rs_l + ra_v) / 2.0) + 0.3)))
-                        c_v = int(max(0, round(((rs_v + ra_l) / 2.0) - 0.3)))
+                        if prob_final_local > 0.5 and c_l <= c_v:
+                            c_l = round((total_runs / 2) + 0.25, 2)
+                            c_v = round((total_runs / 2) - 0.25, 2)
+                        elif prob_final_local <= 0.5 and c_v <= c_l:
+                            c_v = round((total_runs / 2) + 0.25, 2)
+                            c_l = round((total_runs / 2) - 0.25, 2)
+                            
+                        total_runs = round(c_v + c_l, 2)
                         
-                        if prob_final_local > 0.5 and c_l <= c_v: c_l = c_v + 1
-                        elif prob_final_local <= 0.5 and c_v <= c_l: c_v = c_l + 1
+                        if total_runs > LINEA_TOTALES: ou_pick = "🔥 ALTA"
+                        else: ou_pick = "🧊 BAJA"
                         
                         resultados_jornada.append({
                             "✈️ Visitante": f"{e_visita} ({rec_v})",
                             "🏠 Local": f"{e_local} ({rec_l})",
                             "🏆 Proyección": ganador,
-                            "📊 Prob.": f"{pct_final}%"
+                            "📊 Prob.": f"{pct_final}%",
+                            "🎯 Marcador Proy.": f"{c_v:.2f} - {c_l:.2f}",
+                            f"⚖️ Total ({LINEA_TOTALES})": f"{ou_pick} ({total_runs:.2f})"
                         })
                     
                     if resultados_jornada:
                         df_resultados = pd.DataFrame(resultados_jornada)
                         df_estilizado = df_resultados.style.apply(aplicar_semaforo_confianza, axis=1)
                         st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
-                        st.success("✅ Análisis completado. Apuestas de alta confianza resaltadas en verde")
+                        st.success("✅ Análisis completado. Jugadas de alta confianza resaltadas en verde")
                     else:
                         st.info("No se encontraron partidos válidos en la lista oficial para hoy.")
 
@@ -290,13 +342,39 @@ if st.session_state.df_mlb is not None:
                 
             porcentaje_entero = int(round(max(min(porcentaje_bruto, 0.99), 0.01) * 100))
                       
+            c_v, c_l = get_hybrid_run_projection(e_visita_manual, e_local_manual, df)
+            total_runs = c_v + c_l
+            
+            if prob_final_local > 0.5 and c_l <= c_v:
+                c_l = round((total_runs / 2) + 0.25, 2)
+                c_v = round((total_runs / 2) - 0.25, 2)
+            elif prob_final_local <= 0.5 and c_v <= c_l:
+                c_v = round((total_runs / 2) + 0.25, 2)
+                c_l = round((total_runs / 2) - 0.25, 2)
+                
+            total_runs = round(c_v + c_l, 2)
+            
+            if total_runs > LINEA_TOTALES: ou_pick = "🔥 ALTA"
+            else: ou_pick = "🧊 BAJA"
+            
             st.markdown("### 📊 Pizarra de Proyección")
             
+            # Alerta de confianza para el ganador
             if (ganador == e_visita_manual and porcentaje_entero >= 55) or (ganador == e_local_manual and porcentaje_entero >= 65):
-                st.success("🟢 ESTA PROYECCIÓN CUMPLE CON EL UMBRAL DE ALTA CONFIANZA")
+                st.success("🟢 ESTA PROYECCIÓN DE GANADOR CUMPLE CON EL UMBRAL DE ALTA CONFIANZA")
                 
-            # Mostramos únicamente el ganador y su probabilidad
             st.metric("🏆 Ganador Proyectado", ganador, f"{porcentaje_entero}%")
+            
+            st.markdown("#### ⚖️ Mercado de Totales (Over/Under)")
+            
+            # Alerta de confianza para Totales (Alta/Baja)
+            if total_runs <= 7.5 or total_runs >= 9.5:
+                st.success("🟢 ESTA PROYECCIÓN DE TOTALES CUMPLE CON EL UMBRAL DE ALTA CONFIANZA")
+                
+            k1, k2, k3 = st.columns(3)
+            k1.metric(f"✈️ {e_visita_manual} (Visita)", f"{c_v:.2f} Carreras")
+            k2.metric(f"🏠 {e_local_manual} (Local)", f"{c_l:.2f} Carreras")
+            k3.metric(f"Línea de Las Vegas: {LINEA_TOTALES}", f"Carreras Proyectadas: {total_runs:.2f}")
 
     # --- VISOR DE DATOS ---
     st.markdown("---")
