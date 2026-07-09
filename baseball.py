@@ -11,7 +11,7 @@ from sklearn.ensemble import RandomForestClassifier
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
-st.markdown("Proyección Sabermétrica: Elo, Racha, H2H, Pitagórico, Rendimiento Dividido y Totales Híbridos")
+st.markdown("Proyección Sabermétrica: Elo, Racha, H2H, Pitagórico, Rendimiento Dividido, Abridores y Totales")
 st.markdown("---")
 
 # --- PARÁMETROS SABERMÉTRICOS FIJOS ---
@@ -131,12 +131,41 @@ def get_hybrid_run_projection(away_team, home_team, df):
 
     return round(proj_away, 2), round(proj_home, 2)
 
+# Extracción de ERA del Abridor desde la API (Priorizando Últimos 7 Juegos)
+def get_pitcher_era(pitcher_name):
+    if not pitcher_name or pitcher_name == 'TBD': 
+        return 4.50
+    try:
+        players = statsapi.lookup_player(pitcher_name)
+        if not players: return 4.50
+        player_id = players[0]['id']
+        
+        # 1. Intentar obtener la métrica de los últimos 7 juegos primero
+        try:
+            stats_7 = statsapi.player_stat_data(player_id, group="pitching", type="last7Games")
+            if stats_7 and 'stats' in stats_7 and len(stats_7['stats']) > 0:
+                era_str = stats_7['stats'][0]['stats'].get('era', '-.--')
+                if era_str != '-.--':
+                    return float(era_str)
+        except:
+            pass # Si falla, pasamos al Plan B
+            
+        # 2. Plan B (Fallback): Si no tiene 7 juegos recientes, usar la temporada completa
+        stats_season = statsapi.player_stat_data(player_id, group="pitching", type="season")
+        if stats_season and 'stats' in stats_season and len(stats_season['stats']) > 0:
+            era_str = stats_season['stats'][0]['stats'].get('era', '-.--')
+            if era_str != '-.--':
+                return float(era_str)
+                
+        return 4.50
+    except:
+        return 4.50
+
 def aplicar_semaforo_confianza(row):
     styles = [''] * len(row)
     ganador = row['🏆 Proyección']
     prob = int(str(row['📊 Prob.']).replace('%', ''))
     
-    # Extraer el valor total proyectado de la celda
     col_total = f"⚖️ Total ({LINEA_TOTALES})"
     try:
         total_val = float(str(row[col_total]).split('(')[1].replace(')', ''))
@@ -144,12 +173,10 @@ def aplicar_semaforo_confianza(row):
         total_val = LINEA_TOTALES
     
     for i, col in enumerate(row.index):
-        # Semáforo para Ganador
         if col == '🏆 Proyección':
             if (ganador in row['✈️ Visitante'] and prob >= 55) or (ganador in row['🏠 Local'] and prob >= 65):
                 styles[i] = 'background-color: #198754; color: white; font-weight: bold;'
         
-        # Semáforo para Totales (Alta/Baja)
         elif col == col_total:
             if total_val <= 7.5 or total_val >= 9.5:
                 styles[i] = 'background-color: #198754; color: white; font-weight: bold;'
@@ -174,9 +201,20 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
                 
             data_total = []
             for start, end in fechas:
-                batch = statsapi.schedule(start_date=start, end_date=end, sportId=1)
-                if batch: data_total.extend(batch)
-                time.sleep(0.5)
+                intentos = 0
+                exito = False
+                while intentos < 3 and not exito:
+                    try:
+                        batch = statsapi.schedule(start_date=start, end_date=end, sportId=1)
+                        if batch: data_total.extend(batch)
+                        exito = True
+                        time.sleep(1.0)
+                    except Exception:
+                        intentos += 1
+                        time.sleep(2.0)
+                
+                if not exito:
+                    st.sidebar.warning(f"⚠️ El servidor de la MLB omitió el bloque de {start}.")
             
             df = pd.DataFrame(data_total)
             df = df[df['status'] == 'Final'].copy()
@@ -202,7 +240,7 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
             df['Elo_L'], df['Elo_V'] = h_elo_l, h_elo_v
             st.session_state.df_mlb = df
             st.sidebar.success("✅ Base de datos al día. Juegos de exhibición purgados")
-        except Exception as e: st.sidebar.error(f"Error: {e}")
+        except Exception as e: st.sidebar.error(f"Error Crítico: {e}")
 
 # --- ÁREA PRINCIPAL ---
 if st.session_state.df_mlb is not None:
@@ -217,7 +255,7 @@ if st.session_state.df_mlb is not None:
         st.markdown(f"### 🎯 Partidos programados para hoy: **{st.session_state.fecha_hoy}**")
         
         if st.button("⚡ Analizar Jornada Completa", type="primary", use_container_width=True):
-            with st.spinner("Escaneando el calendario y calculando proyecciones con matriz pitagórica y totales..."):
+            with st.spinner("Escaneando el calendario, descargando métricas recientes (L7) de abridores y procesando..."):
                 juegos_hoy = statsapi.schedule(date=st.session_state.fecha_hoy, sportId=1)
                 
                 if not juegos_hoy:
@@ -229,12 +267,11 @@ if st.session_state.df_mlb is not None:
                     for juego in juegos_hoy:
                         e_local = juego['home_name']
                         e_visita = juego['away_name']
+                        p_local = juego.get('home_probable_pitcher', '')
+                        p_visita = juego.get('away_probable_pitcher', '')
                         
-                        if e_local not in MLB_TEAM_WHITELIST or e_visita not in MLB_TEAM_WHITELIST:
-                            continue
-                            
-                        if e_local in equipos_procesados or e_visita in equipos_procesados:
-                            continue
+                        if e_local not in MLB_TEAM_WHITELIST or e_visita not in MLB_TEAM_WHITELIST: continue
+                        if e_local in equipos_procesados or e_visita in equipos_procesados: continue
                         
                         equipos_procesados.add(e_local)
                         equipos_procesados.add(e_visita)
@@ -244,7 +281,6 @@ if st.session_state.df_mlb is not None:
                         
                         elo_l = df[df['Local'] == e_local].tail(1)['Elo_L'].values[0] if len(df[df['Local'] == e_local]) > 0 else 1500
                         elo_v = df[df['Visitante'] == e_visita].tail(1)['Elo_V'].values[0] if len(df[df['Visitante'] == e_visita]) > 0 else 1500
-                        
                         elo_l += 35 
                         
                         racha_l = get_recent_form(e_local, df)
@@ -254,12 +290,20 @@ if st.session_state.df_mlb is not None:
                         luck_v = get_pythagorean_luck(e_visita, df)
                         split_l, split_v = get_splits_win_pct(e_local, e_visita, df)
                         
+                        # Extraer el ERA (ahora prioriza L7 Games)
+                        era_l = get_pitcher_era(p_local)
+                        era_v = get_pitcher_era(p_visita)
+                        
                         prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
+                        
+                        pitcher_adj = ((era_v - era_l) / 9.0) * 5.0 * 0.10
+                        
                         prob_final_local = (prob + 
                                             (racha_l - racha_v) * PESO_RACHA + 
                                             (h2h - 0.5) * PESO_H2H + 
                                             (luck_l - luck_v) * PESO_PITAGORICO + 
-                                            (split_l - split_v) * PESO_SPLITS)
+                                            (split_l - split_v) * PESO_SPLITS +
+                                            pitcher_adj)
                         
                         if prob_final_local > 0.5:
                             ganador = e_local
@@ -271,6 +315,12 @@ if st.session_state.df_mlb is not None:
                         pct_final = int(round(max(min(pct_bruto, 0.99), 0.01) * 100))
                         
                         c_v, c_l = get_hybrid_run_projection(e_visita, e_local, df)
+                        
+                        adj_runs_l = (era_v - 4.50) * (5.0/9.0)
+                        adj_runs_v = (era_l - 4.50) * (5.0/9.0)
+                        
+                        c_l = max(0.5, c_l + adj_runs_l)
+                        c_v = max(0.5, c_v + adj_runs_v)
                         total_runs = c_v + c_l
                         
                         if prob_final_local > 0.5 and c_l <= c_v:
@@ -288,6 +338,7 @@ if st.session_state.df_mlb is not None:
                         resultados_jornada.append({
                             "✈️ Visitante": f"{e_visita} ({rec_v})",
                             "🏠 Local": f"{e_local} ({rec_l})",
+                            "⚾ Abridores (L7 ERA)": f"{p_visita or 'TBD'} ({era_v:.2f}) vs {p_local or 'TBD'} ({era_l:.2f})",
                             "🏆 Proyección": ganador,
                             "📊 Prob.": f"{pct_final}%",
                             "🎯 Marcador Proy.": f"{c_v:.2f} - {c_l:.2f}",
@@ -307,8 +358,12 @@ if st.session_state.df_mlb is not None:
         equipos = sorted(list(set(df['Local'].unique()) | set(df['Visitante'].unique())))
         
         c1, c2 = st.columns(2)
-        with c1: e_local_manual = st.selectbox("🏠 Equipo Local:", equipos, key="loc_man")
-        with c2: e_visita_manual = st.selectbox("✈️ Equipo Visitante:", [e for e in equipos if e != e_local_manual], key="vis_man")
+        with c1: 
+            e_local_manual = st.selectbox("🏠 Equipo Local:", equipos, key="loc_man")
+            era_l_man = st.number_input("ERA Abridor Local (Últimos 7 juegos):", min_value=0.0, max_value=20.0, value=4.50, step=0.10)
+        with c2: 
+            e_visita_manual = st.selectbox("✈️ Equipo Visitante:", [e for e in equipos if e != e_local_manual], key="vis_man")
+            era_v_man = st.number_input("ERA Abridor Visitante (Últimos 7 juegos):", min_value=0.0, max_value=20.0, value=4.50, step=0.10)
 
         if st.button("🚀 Lanzar Proyección Individual"):
             rec_l = get_team_record(e_local_manual, df)
@@ -316,7 +371,6 @@ if st.session_state.df_mlb is not None:
             
             elo_l = df[df['Local'] == e_local_manual].tail(1)['Elo_L'].values[0] if len(df[df['Local'] == e_local_manual]) > 0 else 1500
             elo_v = df[df['Visitante'] == e_visita_manual].tail(1)['Elo_V'].values[0] if len(df[df['Visitante'] == e_visita_manual]) > 0 else 1500
-            
             elo_l += 35 
             
             racha_l = get_recent_form(e_local_manual, df)
@@ -327,11 +381,15 @@ if st.session_state.df_mlb is not None:
             split_l, split_v = get_splits_win_pct(e_local_manual, e_visita_manual, df)
             
             prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
+            
+            pitcher_adj = ((era_v_man - era_l_man) / 9.0) * 5.0 * 0.10
+            
             prob_final_local = (prob + 
                                 (racha_l - racha_v) * PESO_RACHA + 
                                 (h2h - 0.5) * PESO_H2H + 
                                 (luck_l - luck_v) * PESO_PITAGORICO + 
-                                (split_l - split_v) * PESO_SPLITS)
+                                (split_l - split_v) * PESO_SPLITS +
+                                pitcher_adj)
             
             if prob_final_local > 0.5:
                 ganador = e_local_manual
@@ -343,6 +401,12 @@ if st.session_state.df_mlb is not None:
             porcentaje_entero = int(round(max(min(porcentaje_bruto, 0.99), 0.01) * 100))
                       
             c_v, c_l = get_hybrid_run_projection(e_visita_manual, e_local_manual, df)
+            
+            adj_runs_l = (era_v_man - 4.50) * (5.0/9.0)
+            adj_runs_v = (era_l_man - 4.50) * (5.0/9.0)
+            
+            c_l = max(0.5, c_l + adj_runs_l)
+            c_v = max(0.5, c_v + adj_runs_v)
             total_runs = c_v + c_l
             
             if prob_final_local > 0.5 and c_l <= c_v:
@@ -359,7 +423,6 @@ if st.session_state.df_mlb is not None:
             
             st.markdown("### 📊 Pizarra de Proyección")
             
-            # Alerta de confianza para el ganador
             if (ganador == e_visita_manual and porcentaje_entero >= 55) or (ganador == e_local_manual and porcentaje_entero >= 65):
                 st.success("🟢 ESTA PROYECCIÓN DE GANADOR CUMPLE CON EL UMBRAL DE ALTA CONFIANZA")
                 
@@ -367,14 +430,13 @@ if st.session_state.df_mlb is not None:
             
             st.markdown("#### ⚖️ Mercado de Totales (Over/Under)")
             
-            # Alerta de confianza para Totales (Alta/Baja)
             if total_runs <= 7.5 or total_runs >= 9.5:
                 st.success("🟢 ESTA PROYECCIÓN DE TOTALES CUMPLE CON EL UMBRAL DE ALTA CONFIANZA")
                 
             k1, k2, k3 = st.columns(3)
             k1.metric(f"✈️ {e_visita_manual} (Visita)", f"{c_v:.2f} Carreras")
             k2.metric(f"🏠 {e_local_manual} (Local)", f"{c_l:.2f} Carreras")
-            k3.metric(f"Línea de Las Vegas: {LINEA_TOTALES}", f"Total Carreras: {total_runs:.2f}")
+            k3.metric(f"Línea de Las Vegas: {LINEA_TOTALES}", f"{ou_pick} (Proyecta: {total_runs:.2f})")
 
     # --- VISOR DE DATOS ---
     st.markdown("---")
