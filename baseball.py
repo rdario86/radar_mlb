@@ -131,7 +131,7 @@ def get_hybrid_run_projection(away_team, home_team, df):
 
     return round(proj_away, 2), round(proj_home, 2)
 
-# Extracción de ERA del Abridor desde la API (Priorizando Últimos 7 Juegos)
+# Extracción de ERA del Abridor desde la API (Cálculo Manual Infallible de Últimos 7 Juegos)
 def get_pitcher_era(pitcher_name):
     if not pitcher_name or pitcher_name == 'TBD': 
         return 4.50
@@ -140,22 +140,50 @@ def get_pitcher_era(pitcher_name):
         if not players: return 4.50
         player_id = players[0]['id']
         
-        # 1. Intentar obtener la métrica de los últimos 7 juegos primero
+        # 1. Bypass Absoluto: Descargar el Game Log y calcular matemáticamente
         try:
-            stats_7 = statsapi.player_stat_data(player_id, group="pitching", type="last7Games")
-            if stats_7 and 'stats' in stats_7 and len(stats_7['stats']) > 0:
-                era_str = stats_7['stats'][0]['stats'].get('era', '-.--')
+            raw_data = statsapi.get('people', {'personIds': player_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
+            if 'people' in raw_data and len(raw_data['people']) > 0:
+                person = raw_data['people'][0]
+                if 'stats' in person:
+                    for stat_block in person['stats']:
+                        if stat_block.get('type', {}).get('displayName') == 'gameLog':
+                            splits = stat_block.get('splits', [])
+                            if splits:
+                                splits.sort(key=lambda x: x.get('date', ''), reverse=True)
+                                last_7 = splits[:7]
+                                
+                                total_er = 0
+                                total_outs = 0
+                                
+                                for game in last_7:
+                                    g_stats = game.get('stat', {})
+                                    total_er += int(g_stats.get('earnedRuns', 0))
+                                    ip_str = str(g_stats.get('inningsPitched', '0.0'))
+                                    
+                                    if '.' in ip_str:
+                                        full, frac = ip_str.split('.')
+                                        total_outs += (int(full) * 3) + int(frac)
+                                    else:
+                                        total_outs += int(ip_str) * 3
+                                        
+                                if total_outs > 0:
+                                    era = (total_er / (total_outs / 3.0)) * 9.0
+                                    return round(era, 2)
+                                else:
+                                    return 4.50
+        except Exception:
+            pass
+            
+        # 2. Plan B (Fallback): StatsAPI Wrapper para Temporada Completa
+        try:
+            stats_season = statsapi.player_stat_data(player_id, group="pitching", type="season")
+            if stats_season and 'stats' in stats_season and len(stats_season['stats']) > 0:
+                era_str = stats_season['stats'][0]['stats'].get('era', '-.--')
                 if era_str != '-.--':
                     return float(era_str)
-        except:
-            pass # Si falla, pasamos al Plan B
-            
-        # 2. Plan B (Fallback): Si no tiene 7 juegos recientes, usar la temporada completa
-        stats_season = statsapi.player_stat_data(player_id, group="pitching", type="season")
-        if stats_season and 'stats' in stats_season and len(stats_season['stats']) > 0:
-            era_str = stats_season['stats'][0]['stats'].get('era', '-.--')
-            if era_str != '-.--':
-                return float(era_str)
+        except Exception:
+            pass
                 
         return 4.50
     except:
@@ -255,7 +283,7 @@ if st.session_state.df_mlb is not None:
         st.markdown(f"### 🎯 Partidos programados para hoy: **{st.session_state.fecha_hoy}**")
         
         if st.button("⚡ Analizar Jornada Completa", type="primary", use_container_width=True):
-            with st.spinner("Escaneando el calendario, descargando métricas recientes (L7) de abridores y procesando..."):
+            with st.spinner("Escaneando el calendario, calculando ERA real (L7) de abridores y procesando..."):
                 juegos_hoy = statsapi.schedule(date=st.session_state.fecha_hoy, sportId=1)
                 
                 if not juegos_hoy:
@@ -265,6 +293,12 @@ if st.session_state.df_mlb is not None:
                     equipos_procesados = set() 
                     
                     for juego in juegos_hoy:
+                        # NUEVO FILTRO: Ignorar juegos que ya comenzaron, terminaron o se pospusieron
+                        estado_juego = juego.get('status', '')
+                        estados_validos = ['Scheduled', 'Pre-Game', 'Warmup', 'Delayed Start']
+                        if estado_juego not in estados_validos:
+                            continue
+                            
                         e_local = juego['home_name']
                         e_visita = juego['away_name']
                         p_local = juego.get('home_probable_pitcher', '')
@@ -275,6 +309,15 @@ if st.session_state.df_mlb is not None:
                         
                         equipos_procesados.add(e_local)
                         equipos_procesados.add(e_visita)
+                            
+                        game_dt_str = juego.get('game_datetime', '')
+                        if game_dt_str:
+                            try:
+                                hora_et = pd.to_datetime(game_dt_str).tz_convert('US/Eastern').strftime('%I:%M %p')
+                            except:
+                                hora_et = 'TBD'
+                        else:
+                            hora_et = 'TBD'
                             
                         rec_l = get_team_record(e_local, df)
                         rec_v = get_team_record(e_visita, df)
@@ -290,7 +333,6 @@ if st.session_state.df_mlb is not None:
                         luck_v = get_pythagorean_luck(e_visita, df)
                         split_l, split_v = get_splits_win_pct(e_local, e_visita, df)
                         
-                        # Extraer el ERA (ahora prioriza L7 Games)
                         era_l = get_pitcher_era(p_local)
                         era_v = get_pitcher_era(p_visita)
                         
@@ -336,6 +378,7 @@ if st.session_state.df_mlb is not None:
                         else: ou_pick = "🧊 BAJA"
                         
                         resultados_jornada.append({
+                            "⏰ Hora (ET)": hora_et,
                             "✈️ Visitante": f"{e_visita} ({rec_v})",
                             "🏠 Local": f"{e_local} ({rec_l})",
                             "⚾ Abridores (L7 ERA)": f"{p_visita or 'TBD'} ({era_v:.2f}) vs {p_local or 'TBD'} ({era_l:.2f})",
@@ -351,7 +394,7 @@ if st.session_state.df_mlb is not None:
                         st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
                         st.success("✅ Análisis completado. Jugadas de alta confianza resaltadas en verde")
                     else:
-                        st.info("No se encontraron partidos válidos en la lista oficial para hoy.")
+                        st.info("Todos los partidos válidos de hoy ya han comenzado o finalizado.")
 
     with tab2:
         st.markdown("### 🔍 Análisis Detallado (Partido Único)")
