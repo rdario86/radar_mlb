@@ -5,6 +5,8 @@ import statsapi
 import time
 import datetime
 import calendar
+import io
+import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestClassifier
 
 # --- CONFIGURACIÓN ---
@@ -140,7 +142,6 @@ def get_pitcher_era(pitcher_name):
         if not players: return 4.50
         player_id = players[0]['id']
         
-        # 1. Bypass Absoluto: Descargar el Game Log y calcular matemáticamente
         try:
             raw_data = statsapi.get('people', {'personIds': player_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
             if 'people' in raw_data and len(raw_data['people']) > 0:
@@ -175,7 +176,6 @@ def get_pitcher_era(pitcher_name):
         except Exception:
             pass
             
-        # 2. Plan B (Fallback): StatsAPI Wrapper para Temporada Completa
         try:
             stats_season = statsapi.player_stat_data(player_id, group="pitching", type="season")
             if stats_season and 'stats' in stats_season and len(stats_season['stats']) > 0:
@@ -211,9 +211,103 @@ def aplicar_semaforo_confianza(row):
                 
     return styles
 
+# MODIFICADO: Función de exportación optimizada para legibilidad sin encimado de letras
+def convert_df_to_image(df_orig):
+    df_clean = df_orig.copy()
+    
+    # 1. Excluir las columnas solicitadas para dar espacio y limpiar la imagen
+    cols_a_ignorar = ["⏰ Hora (ET)", "⚾ Abridores (L7 ERA)"]
+    df_clean = df_clean.drop(columns=[c for c in cols_a_ignorar if c in df_clean.columns], errors='ignore')
+    
+    # 2. Limpiar emojis de los títulos de las columnas restantes
+    clean_cols = []
+    for col in df_clean.columns:
+        c = col.replace("✈️ ", "").replace("🏠 ", "").replace("🏆 ", "").replace("📊 ", "").replace("🎯 ", "").replace("⚖️ ", "")
+        clean_cols.append(c)
+    df_clean.columns = clean_cols
+    
+    # 3. Limpiar emojis de las filas internas de texto
+    for col in df_clean.columns:
+        df_clean[col] = df_clean[col].astype(str).str.replace("🔥 ", "").str.replace("🧊 ", "")
+        
+    # Ajuste dinámico de la altura del canvas según la cantidad de partidos
+    fig, ax = plt.subplots(figsize=(14, max(2, len(df_clean) * 0.6 + 1.5)))
+    ax.axis('off')
+    
+    tab = ax.table(cellText=df_clean.values, colLabels=df_clean.columns, cellLoc='center', loc='center')
+    tab.auto_set_font_size(False)
+    tab.set_fontsize(11)
+    
+    # NUEVO: Forzar a cada columna a auto-expandirse según el tamaño de su texto
+    for i in range(len(df_clean.columns)):
+        tab.auto_set_column_width(i)
+        
+    tab.scale(1.2, 2.2) # Ampliación proporcional del acolchado interno de las celdas
+    
+    # Buscar índices para el formateo condicional cromático
+    try: idx_proj = df_clean.columns.get_loc('Proyección')
+    except: idx_proj = -1
+    try: idx_prob = df_clean.columns.get_loc('Prob.')
+    except: idx_prob = -1
+    try: idx_vis = df_clean.columns.get_loc('Visitante')
+    except: idx_vis = -1
+    try: idx_loc = df_clean.columns.get_loc('Local')
+    except: idx_loc = -1
+    
+    idx_total = -1
+    for idx, col in enumerate(df_clean.columns):
+        if 'Total' in col:
+            idx_total = idx
+            break
+            
+    # Estilizar encabezado (Fila 0)
+    for j in range(len(df_clean.columns)):
+        cell = tab[0, j]
+        cell.set_text_props(weight='bold', color='white')
+        cell.set_facecolor('#1c3144')
+        
+    # Estilizar cuerpo de la tabla
+    for i in range(1, len(df_clean) + 1):
+        row_data = df_clean.iloc[i-1]
+        bg_color = '#ffffff' if i % 2 != 0 else '#f8f9fa'
+        for j in range(len(df_clean.columns)):
+            tab[i, j].set_facecolor(bg_color)
+            
+        # Replicar semáforo verde en Ganador
+        if idx_proj != -1 and idx_prob != -1 and idx_vis != -1 and idx_loc != -1:
+            ganador = row_data.iloc[idx_proj]
+            vis = row_data.iloc[idx_vis]
+            loc = row_data.iloc[idx_loc]
+            try: prob = int(str(row_data.iloc[idx_prob]).replace('%', ''))
+            except: prob = 0
+            
+            if (ganador in vis and prob >= 55) or (ganador in loc and prob >= 65):
+                cell = tab[i, idx_proj]
+                cell.set_facecolor('#198754')
+                cell.set_text_props(weight='bold', color='white')
+                
+        # Replicar semáforo verde en Totales
+        if idx_total != -1:
+            try:
+                total_str = str(row_data.iloc[idx_total])
+                total_val = float(total_str.split('(')[1].replace(')', ''))
+                if total_val <= 7.5 or total_val >= 9.5:
+                    cell = tab[i, idx_total]
+                    cell.set_facecolor('#198754')
+                    cell.set_text_props(weight='bold', color='white')
+            except:
+                pass
+                
+    buf = io.BytesIO()
+    plt.savefig(buf, format='jpeg', bbox_inches='tight', dpi=220)
+    buf.seek(0)
+    plt.close(fig)
+    return buf
+
 # --- ESTADO DE SESIÓN ---
 if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
 if 'fecha_hoy' not in st.session_state: st.session_state.fecha_hoy = datetime.date.today().strftime('%Y-%m-%d')
+if 'resultados_hoy' not in st.session_state: st.session_state.resultados_hoy = None
 
 # --- BARRA LATERAL: MOTOR DE DATOS ---
 st.sidebar.markdown("### 📥 Sincronización")
@@ -288,12 +382,12 @@ if st.session_state.df_mlb is not None:
                 
                 if not juegos_hoy:
                     st.warning("No hay juegos oficiales programados para la fecha de hoy.")
+                    st.session_state.resultados_hoy = None
                 else:
                     resultados_jornada = []
                     equipos_procesados = set() 
                     
                     for juego in juegos_hoy:
-                        # NUEVO FILTRO: Ignorar juegos que ya comenzaron, terminaron o se pospusieron
                         estado_juego = juego.get('status', '')
                         estados_validos = ['Scheduled', 'Pre-Game', 'Warmup', 'Delayed Start']
                         if estado_juego not in estados_validos:
@@ -312,12 +406,9 @@ if st.session_state.df_mlb is not None:
                             
                         game_dt_str = juego.get('game_datetime', '')
                         if game_dt_str:
-                            try:
-                                hora_et = pd.to_datetime(game_dt_str).tz_convert('US/Eastern').strftime('%I:%M %p')
-                            except:
-                                hora_et = 'TBD'
-                        else:
-                            hora_et = 'TBD'
+                            try: hora_et = pd.to_datetime(game_dt_str).tz_convert('US/Eastern').strftime('%I:%M %p')
+                            except: hora_et = 'TBD'
+                        else: hora_et = 'TBD'
                             
                         rec_l = get_team_record(e_local, df)
                         rec_v = get_team_record(e_visita, df)
@@ -363,14 +454,14 @@ if st.session_state.df_mlb is not None:
                         
                         c_l = max(0.5, c_l + adj_runs_l)
                         c_v = max(0.5, c_v + adj_runs_v)
-                        total_runs = c_v + c_l
                         
-                        if prob_final_local > 0.5 and c_l <= c_v:
-                            c_l = round((total_runs / 2) + 0.25, 2)
-                            c_v = round((total_runs / 2) - 0.25, 2)
-                        elif prob_final_local <= 0.5 and c_v <= c_l:
-                            c_v = round((total_runs / 2) + 0.25, 2)
-                            c_l = round((total_runs / 2) - 0.25, 2)
+                        c_l_int = int(round(c_l))
+                        c_v_int = int(round(c_v))
+                        
+                        if prob_final_local > 0.5 and c_l_int <= c_v_int:
+                            c_l_int = c_v_int + 1
+                        elif prob_final_local <= 0.5 and c_v_int <= c_l_int:
+                            c_v_int = c_l_int + 1
                             
                         total_runs = round(c_v + c_l, 2)
                         
@@ -384,17 +475,30 @@ if st.session_state.df_mlb is not None:
                             "⚾ Abridores (L7 ERA)": f"{p_visita or 'TBD'} ({era_v:.2f}) vs {p_local or 'TBD'} ({era_l:.2f})",
                             "🏆 Proyección": ganador,
                             "📊 Prob.": f"{pct_final}%",
-                            "🎯 Marcador Proy.": f"{c_v:.2f} - {c_l:.2f}",
+                            "🎯 Marcador Proy.": f"{c_v_int} - {c_l_int}",
                             f"⚖️ Total ({LINEA_TOTALES})": f"{ou_pick} ({total_runs:.2f})"
                         })
-                    
-                    if resultados_jornada:
-                        df_resultados = pd.DataFrame(resultados_jornada)
-                        df_estilizado = df_resultados.style.apply(aplicar_semaforo_confianza, axis=1)
-                        st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
-                        st.success("✅ Análisis completado. Jugadas de alta confianza resaltadas en verde")
-                    else:
-                        st.info("Todos los partidos válidos de hoy ya han comenzado o finalizado.")
+                    st.session_state.resultados_hoy = resultados_jornada
+
+        if st.session_state.resultados_hoy is not None:
+            if len(st.session_state.resultados_hoy) > 0:
+                df_resultados = pd.DataFrame(st.session_state.resultados_hoy)
+                df_estilizado = df_resultados.style.apply(aplicar_semaforo_confianza, axis=1)
+                st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
+                st.success("✅ Análisis completado. Jugadas de alta confianza resaltadas en verde")
+                
+                with st.spinner("Preparando lienzo gráfico de alta definición para descarga..."):
+                    img_buf = convert_df_to_image(df_resultados)
+                
+                st.download_button(
+                    label="📸 Descargar Cartelera Predictiva (JPG)",
+                    data=img_buf,
+                    file_name=f"radar_mlb_{st.session_state.fecha_hoy}.jpg",
+                    mime="image/jpeg",
+                    use_container_width=True
+                )
+            else:
+                st.info("Todos los partidos válidos de hoy ya han comenzado o finalizado.")
 
     with tab2:
         st.markdown("### 🔍 Análisis Detallado (Partido Único)")
@@ -450,14 +554,14 @@ if st.session_state.df_mlb is not None:
             
             c_l = max(0.5, c_l + adj_runs_l)
             c_v = max(0.5, c_v + adj_runs_v)
-            total_runs = c_v + c_l
             
-            if prob_final_local > 0.5 and c_l <= c_v:
-                c_l = round((total_runs / 2) + 0.25, 2)
-                c_v = round((total_runs / 2) - 0.25, 2)
-            elif prob_final_local <= 0.5 and c_v <= c_l:
-                c_v = round((total_runs / 2) + 0.25, 2)
-                c_l = round((total_runs / 2) - 0.25, 2)
+            c_l_int = int(round(c_l))
+            c_v_int = int(round(c_v))
+            
+            if prob_final_local > 0.5 and c_l_int <= c_v_int:
+                c_l_int = c_v_int + 1
+            elif prob_final_local <= 0.5 and c_v_int <= c_l_int:
+                c_v_int = c_l_int + 1
                 
             total_runs = round(c_v + c_l, 2)
             
@@ -477,8 +581,8 @@ if st.session_state.df_mlb is not None:
                 st.success("🟢 ESTA PROYECCIÓN DE TOTALES CUMPLE CON EL UMBRAL DE ALTA CONFIANZA")
                 
             k1, k2, k3 = st.columns(3)
-            k1.metric(f"✈️ {e_visita_manual} (Visita)", f"{c_v:.2f} Carreras")
-            k2.metric(f"🏠 {e_local_manual} (Local)", f"{c_l:.2f} Carreras")
+            k1.metric(f"✈️ {e_visita_manual} (Visita)", f"{c_v_int} Carreras")
+            k2.metric(f"🏠 {e_local_manual} (Local)", f"{c_l_int} Carreras")
             k3.metric(f"Línea de Las Vegas: {LINEA_TOTALES}", f"{ou_pick} (Proyecta: {total_runs:.2f})")
 
     # --- VISOR DE DATOS ---
