@@ -4,3 +4,4 @@ numpy
 scikit-learn
 requests
 MLB-StatsAPI
+matplotlib
