@@ -182,7 +182,7 @@ def get_pitcher_era(pitcher_name):
     except:
         return 4.50
 
-# NUEVO MOTOR OPTIMIZADO: Cazador de Jonrones (Top 4 Estricto)
+# NUEVO MOTOR OPTIMIZADO: Cazador de Jonrones (Top 4 Estricto y limpio)
 def get_hr_hunters(anio, fecha_hoy):
     try:
         # 1. Mapear qué equipos juegan hoy y si son Locales o Visitantes
@@ -200,12 +200,14 @@ def get_hr_hunters(anio, fecha_hoy):
             
         leaders = data['leagueLeaders'][0].get('leaders', [])
         
-        # 3. Filtrar estrictamente a los jugadores que tienen juego HOY
+        # 3. Filtrar estrictamente a los jugadores que tienen juego HOY y extraer su equipo
         jugadores_activos = []
         for p in leaders:
             team_id = p.get('team', {}).get('id')
+            team_name = p.get('team', {}).get('name', 'Unknown')
             if team_id in equipos_hoy:
                 p['condicion_hoy'] = equipos_hoy[team_id]
+                p['team_name'] = team_name
                 jugadores_activos.append(p)
                 
         resultados = []
@@ -214,6 +216,7 @@ def get_hr_hunters(anio, fecha_hoy):
         for p in jugadores_activos:
             p_id = p.get('person', {}).get('id')
             p_name = p.get('person', {}).get('fullName')
+            team_name = p.get('team_name', 'Unknown')
             season_hr = int(p.get('value', 0))
             condicion = p.get('condicion_hoy', 'Visitante')
             
@@ -250,6 +253,7 @@ def get_hr_hunters(anio, fecha_hoy):
             
             resultados.append({
                 "⚾ Bateador": p_name,
+                "👕 Equipo": team_name,
                 "🏟️ Condición": condicion,
                 "🏆 HR Año": season_hr,
                 "🔥 HR (L10)": l10_hr,
@@ -259,30 +263,22 @@ def get_hr_hunters(anio, fecha_hoy):
             
         # 5. ORDENAR Y RECORTAR AL TOP 4 EXACTO
         resultados.sort(key=lambda x: x['score'], reverse=True)
-        resultados = resultados[:4] # <-- Aquí se elimina todo el ruido y quedan solo los 4 mejores
+        resultados = resultados[:4]
         
         tabla_final = []
         for r in resultados:
             tabla_final.append({
                 "⚾ Bateador": r["⚾ Bateador"],
+                "👕 Equipo": r["👕 Equipo"],
                 "🏟️ Condición": r["🏟️ Condición"],
                 "🏆 HR Año": r["🏆 HR Año"],
                 "🔥 HR (L10)": r["🔥 HR (L10)"],
-                "📈 Ratio de Poder (L10)": f"{r['🔥 HR (L10)']} HR / {r['📊 Turnos (L10)']} VB",
-                "🎯 Proyección Hoy": "🟢 TOP 4 (Best Bet)" 
+                "📈 Ratio de Poder (L10)": f"{r['🔥 HR (L10)']} HR / {r['📊 Turnos (L10)']} VB"
             })
             
         return tabla_final
     except Exception as e:
         return []
-
-def aplicar_semaforo_hr(row):
-    # Todos los resultados en esta tabla son "Top 4", por lo que se marcan en verde de alta prioridad.
-    styles = [''] * len(row)
-    if "🟢" in str(row['🎯 Proyección Hoy']):
-        for i in range(len(row)):
-            styles[i] = 'background-color: #198754; color: white; font-weight: bold;'
-    return styles
 
 # --- ESTADO DE SESIÓN ---
 if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
@@ -533,8 +529,7 @@ if st.session_state.df_mlb is not None:
                     
         if st.session_state.resultados_hr is not None:
             df_hr = pd.DataFrame(st.session_state.resultados_hr)
-            df_hr_estilizado = df_hr.style.apply(aplicar_semaforo_hr, axis=1)
-            st.dataframe(df_hr_estilizado, use_container_width=True, hide_index=True)
+            st.dataframe(df_hr, use_container_width=True, hide_index=True)
             st.success("✅ Calendario sincronizado y análisis completado. Top 4 mejores opciones de cuadrangular listas.")
 
     # --- VISOR DE DATOS ---
