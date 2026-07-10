@@ -131,7 +131,7 @@ def get_hybrid_run_projection(away_team, home_team, df):
 
     return round(proj_away, 2), round(proj_home, 2)
 
-# Extracción de ERA del Abridor desde la API (Cálculo Manual Infallible de Últimos 7 Juegos)
+# Extracción de ERA del Abridor (Fuerza Bruta Matemática)
 def get_pitcher_era(pitcher_name):
     if not pitcher_name or pitcher_name == 'TBD': 
         return 4.50
@@ -186,28 +186,6 @@ def get_pitcher_era(pitcher_name):
         return 4.50
     except:
         return 4.50
-
-def aplicar_semaforo_confianza(row):
-    styles = [''] * len(row)
-    ganador = row['🏆 Proyección']
-    prob = int(str(row['📊 Prob.']).replace('%', ''))
-    
-    col_total = f"⚖️ Total ({LINEA_TOTALES})"
-    try:
-        total_val = float(str(row[col_total]).split('(')[1].replace(')', ''))
-    except:
-        total_val = LINEA_TOTALES
-    
-    for i, col in enumerate(row.index):
-        if col == '🏆 Proyección':
-            if (ganador in row['✈️ Visitante'] and prob >= 55) or (ganador in row['🏠 Local'] and prob >= 65):
-                styles[i] = 'background-color: #198754; color: white; font-weight: bold;'
-        
-        elif col == col_total:
-            if total_val <= 7.5 or total_val >= 9.5:
-                styles[i] = 'background-color: #198754; color: white; font-weight: bold;'
-                
-    return styles
 
 # --- ESTADO DE SESIÓN ---
 if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
@@ -279,7 +257,7 @@ if st.session_state.df_mlb is not None:
     st.markdown(f"### 🎯 Partidos programados para hoy: **{st.session_state.fecha_hoy}**")
     
     if st.button("⚡ Analizar Jornada Completa", type="primary", use_container_width=True):
-        with st.spinner("Escaneando el calendario, calculando ERA real (L7) de abridores y procesando..."):
+        with st.spinner("Escaneando el calendario, calculando ERA real (L7) de abridores y evaluando Best Bets..."):
             juegos_hoy = statsapi.schedule(date=st.session_state.fecha_hoy, sportId=1)
             
             if not juegos_hoy:
@@ -382,12 +360,72 @@ if st.session_state.df_mlb is not None:
                     })
                 st.session_state.resultados_hoy = resultados_jornada
 
+    # Despliegue con Formato Top 3 (Best Bets)
     if st.session_state.resultados_hoy is not None:
         if len(st.session_state.resultados_hoy) > 0:
             df_resultados = pd.DataFrame(st.session_state.resultados_hoy)
-            df_estilizado = df_resultados.style.apply(aplicar_semaforo_confianza, axis=1)
+            col_total_name = f"⚖️ Total ({LINEA_TOTALES})"
+            
+            # --- MOTOR DE RANKING DE JUGADAS ---
+            todas_las_jugadas = []
+            
+            for i, row in df_resultados.iterrows():
+                ganador = row['🏆 Proyección']
+                prob = int(str(row['📊 Prob.']).replace('%', ''))
+                is_visita = ganador in row['✈️ Visitante']
+                
+                try: total_val = float(str(row[col_total_name]).split('(')[1].replace(')', ''))
+                except: total_val = LINEA_TOTALES
+                
+                # 1. Evaluar y rankear Mercado de Ganadores
+                if (is_visita and prob >= 55) or (not is_visita and prob >= 65):
+                    todas_las_jugadas.append({'row': i, 'col': '🏆 Proyección', 'score': prob})
+                    
+                # 2. Evaluar y rankear Mercado de Totales
+                diff_total = abs(total_val - LINEA_TOTALES)
+                if diff_total >= 1.0: # Diferencia de 1 carrera o más
+                    # Normalización: Cada 1 carrera de edge suma +10% de probabilidad
+                    pseudo_prob = 50 + (diff_total * 10)
+                    todas_las_jugadas.append({'row': i, 'col': col_total_name, 'score': pseudo_prob})
+                    
+            # Seleccionar estrictamente el Top 3 general
+            top_3_jugadas = sorted(todas_las_jugadas, key=lambda x: x['score'], reverse=True)[:3]
+            top_3_coordenadas = [(p['row'], p['col']) for p in top_3_jugadas]
+            
+            # Función de Estilos
+            def aplicar_semaforo_top3(row):
+                styles = [''] * len(row)
+                idx = row.name
+                
+                ganador = row['🏆 Proyección']
+                prob = int(str(row['📊 Prob.']).replace('%', ''))
+                is_visita = ganador in row['✈️ Visitante']
+                
+                try: total_val = float(str(row[col_total_name]).split('(')[1].replace(')', ''))
+                except: total_val = LINEA_TOTALES
+                diff_total = abs(total_val - LINEA_TOTALES)
+                
+                for j, col in enumerate(row.index):
+                    # Semáforo para Ganadores
+                    if col == '🏆 Proyección':
+                        if (idx, col) in top_3_coordenadas:
+                            styles[j] = 'background-color: #198754; color: white; font-weight: bold;' # Verde (Top 3)
+                        elif (is_visita and prob >= 55) or (not is_visita and prob >= 65):
+                            styles[j] = 'background-color: #ffc107; color: black; font-weight: bold;' # Amarillo (Alta Conf.)
+                            
+                    # Semáforo para Totales
+                    elif col == col_total_name:
+                        if (idx, col) in top_3_coordenadas:
+                            styles[j] = 'background-color: #198754; color: white; font-weight: bold;' # Verde (Top 3)
+                        elif diff_total >= 1.0:
+                            styles[j] = 'background-color: #ffc107; color: black; font-weight: bold;' # Amarillo (Alta Conf.)
+                            
+                return styles
+
+            df_estilizado = df_resultados.style.apply(aplicar_semaforo_top3, axis=1)
             st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
-            st.success("✅ Análisis completado. Jugadas de alta confianza resaltadas en verde")
+            
+            st.success("✅ Análisis completado | 🟡 Alta Confianza | 🟢 Top 3 Mejores Jugadas (Best Bets)")
         else:
             st.info("Todos los partidos válidos de hoy ya han comenzado o finalizado.")
 
