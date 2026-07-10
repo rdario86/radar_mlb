@@ -1,6 +1,6 @@
 streamlit
 pandas
 numpy
+MLB-StatsAPI
 scikit-learn
 requests
-MLB-StatsAPI
