@@ -11,7 +11,7 @@ from sklearn.ensemble import RandomForestClassifier
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
-st.markdown("Proyección Sabermétrica: Elo, Racha, H2H, Pitagórico, Rendimiento Dividido, Abridores, Totales y Jonrones")
+st.markdown("Proyección con Análisis Sabermétrico")
 st.markdown("---")
 
 # --- PARÁMETROS SABERMÉTRICOS FIJOS ---
@@ -532,7 +532,7 @@ if st.session_state.df_mlb is not None:
 
     with tab2:
         st.markdown("### 💣 Radar de Jonrones: Filtro de Regresión + Localía")
-        st.markdown("Extrae al Top de bateadores activos HOY. Bonifica con un **+10% a la localía** y ejecuta un filtro **Anti-Resaca**: si el bateador dio cuadrangular el día anterior, se le elimina automáticamente del análisis por baja probabilidad estadística de repetir. Sólo muestra a los 4 mejores.")
+        st.markdown("Extrae al Top de bateadores activos HOY")
         
         if st.button("🔍 Escanear Mercado de Jonrones (Top 4 Limpio)", type="primary", use_container_width=True):
             with st.spinner("Descargando Game Logs, aplicando exclusión por jonrones recientes y calculando métricas de poder..."):
