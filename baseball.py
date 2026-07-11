@@ -182,7 +182,7 @@ def get_pitcher_era(pitcher_name):
     except:
         return 4.50
 
-# NUEVO MOTOR OPTIMIZADO: Cazador de Jonrones (Top 4 Estricto y limpio)
+# NUEVO MOTOR OPTIMIZADO: Cazador de Jonrones con Filtro Anti-HR-Ayer
 def get_hr_hunters(anio, fecha_hoy):
     try:
         # 1. Mapear qué equipos juegan hoy y si son Locales o Visitantes
@@ -193,14 +193,14 @@ def get_hr_hunters(anio, fecha_hoy):
                 equipos_hoy[juego.get('home_id')] = 'Local'
                 equipos_hoy[juego.get('away_id')] = 'Visitante'
         
-        # 2. Descargar Top 40 para asegurar que al menos queden suficientes activos hoy
-        data = statsapi.get('stats_leaders', {'leaderCategories': 'homeRuns', 'season': anio, 'limit': 40, 'statGroup': 'hitting'})
+        # 2. Descargar Top 60 (Límite extendido para compensar exclusiones)
+        data = statsapi.get('stats_leaders', {'leaderCategories': 'homeRuns', 'season': anio, 'limit': 60, 'statGroup': 'hitting'})
         if not data or 'leagueLeaders' not in data or len(data['leagueLeaders']) == 0:
             return []
             
         leaders = data['leagueLeaders'][0].get('leaders', [])
         
-        # 3. Filtrar estrictamente a los jugadores que tienen juego HOY y extraer su equipo
+        # 3. Filtrar estrictamente a los jugadores que tienen juego HOY
         jugadores_activos = []
         for p in leaders:
             team_id = p.get('team', {}).get('id')
@@ -212,7 +212,11 @@ def get_hr_hunters(anio, fecha_hoy):
                 
         resultados = []
         
-        # 4. Procesar estadísticas de los jugadores activos
+        # Calcular la fecha de "Ayer"
+        ayer_dt = datetime.datetime.strptime(fecha_hoy, '%Y-%m-%d') - datetime.timedelta(days=1)
+        fecha_ayer_str = ayer_dt.strftime('%Y-%m-%d')
+        
+        # 4. Procesar estadísticas de los jugadores activos y aplicar filtro Anti-Ayer
         for p in jugadores_activos:
             p_id = p.get('person', {}).get('id')
             p_name = p.get('person', {}).get('fullName')
@@ -227,6 +231,7 @@ def get_hr_hunters(anio, fecha_hoy):
             season_ab = 1
             l10_hr = 0
             l10_ab = 0
+            dio_jonron_ayer = False
             
             for block in stats_blocks:
                 if block.get('type', {}).get('displayName') == 'season':
@@ -237,10 +242,21 @@ def get_hr_hunters(anio, fecha_hoy):
                     last_10 = splits[:10]
                     
                     for game in last_10:
+                        g_date = game.get('date', '')
                         g_stats = game.get('stat', {})
-                        l10_hr += int(g_stats.get('homeRuns', 0))
+                        hr_en_juego = int(g_stats.get('homeRuns', 0))
+                        
+                        # FILTRO ESTRICTO: Si dio HR ayer, lo marcamos para descartar
+                        if g_date == fecha_ayer_str and hr_en_juego > 0:
+                            dio_jonron_ayer = True
+                            
+                        l10_hr += hr_en_juego
                         l10_ab += int(g_stats.get('atBats', 0))
             
+            # Si el jugador dio HR ayer, se ignora por completo su postulación
+            if dio_jonron_ayer:
+                continue
+                
             l10_ab = max(1, l10_ab) # Evitar división por cero
             
             # FÓRMULA SABERMÉTRICA (Índice de Temperatura + Bono de Localía)
@@ -515,22 +531,22 @@ if st.session_state.df_mlb is not None:
                 st.info("Todos los partidos válidos de hoy ya han comenzado o finalizado.")
 
     with tab2:
-        st.markdown("### 💣 Radar de Jonrones: Localía vs. Temperatura Actual")
-        st.markdown("Filtra automáticamente a los líderes jonroneros que **sí juegan el día de hoy** y evalúa sus últimos 10 juegos. El motor inyecta un **+10% de bono a los bateadores locales** y te entrega únicamente el **Top 4 definitivo** listo para apostar.")
+        st.markdown("### 💣 Radar de Jonrones: Filtro de Regresión + Localía")
+        st.markdown("Extrae al Top de bateadores activos HOY. Bonifica con un **+10% a la localía** y ejecuta un filtro **Anti-Resaca**: si el bateador dio cuadrangular el día anterior, se le elimina automáticamente del análisis por baja probabilidad estadística de repetir. Sólo muestra a los 4 mejores.")
         
-        if st.button("🔍 Escanear Mercado de Jonrones (Jugadores Activos Hoy)", type="primary", use_container_width=True):
-            with st.spinner("Conectando con el calendario MLB de hoy... cruzando datos y aislando al Top 4 de élite..."):
+        if st.button("🔍 Escanear Mercado de Jonrones (Top 4 Limpio)", type="primary", use_container_width=True):
+            with st.spinner("Descargando Game Logs, aplicando exclusión por jonrones recientes y calculando métricas de poder..."):
                 resultados = get_hr_hunters(anio_sel, st.session_state.fecha_hoy)
                 
                 if resultados:
                     st.session_state.resultados_hr = resultados
                 else:
-                    st.warning("No se detectaron líderes de cuadrangulares con juegos programados para el día de hoy o hubo un error de conexión.")
+                    st.warning("No se detectaron líderes de cuadrangulares válidos para el día de hoy.")
                     
         if st.session_state.resultados_hr is not None:
             df_hr = pd.DataFrame(st.session_state.resultados_hr)
             st.dataframe(df_hr, use_container_width=True, hide_index=True)
-            st.success("✅ Calendario sincronizado y análisis completado. Top 4 mejores opciones de cuadrangular listas.")
+            st.success("✅ Análisis de Poder finalizado. Tienes frente a ti las 4 mejores oportunidades del día.")
 
     # --- VISOR DE DATOS ---
     st.markdown("---")
