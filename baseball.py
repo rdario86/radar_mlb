@@ -357,21 +357,21 @@ if st.session_state.df_mlb is not None:
     df['Win'] = (df['Carreras_Local'] > df['Carreras_Visitante']).astype(int)
     clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df[['Elo_L', 'Elo_V']], df['Win'])
     
-    tab1, tab2 = st.tabs(["📅 Las Mejores 3 Jugadas (Best Bets)", "💣 Caza-Jonrones (Prop Bets)"])
+    tab1, tab2 = st.tabs(["📅 Cartelera Completa (Mejor Jugada por Juego)", "💣 Caza-Jonrones (Prop Bets)"])
     
     with tab1:
-        st.markdown(f"### 🎯 Picks de Alta Confianza para hoy: **{st.session_state.fecha_hoy}**")
-        st.markdown("El radar escanea todos los juegos de la jornada, calcula las probabilidades de Ganadores y Totales, y **solo te muestra las 3 jugadas con mayor ventaja matemática.**")
+        st.markdown(f"### 🎯 Partidos programados para hoy: **{st.session_state.fecha_hoy}**")
+        st.markdown("El radar escanea la jornada completa, determina la **única mejor jugada** por partido (Ganador vs Totales) y resalta en verde el **Top 3 definitivo** del día.")
         
-        if st.button("⚡ Extraer Top 3 del Día", type="primary", use_container_width=True):
-            with st.spinner("Procesando todos los juegos, evaluando WHIP de abridores y filtrando el ruido..."):
+        if st.button("⚡ Analizar y Extraer Mejores Jugadas", type="primary", use_container_width=True):
+            with st.spinner("Procesando todos los juegos, evaluando WHIP de abridores y rankeando las mejores oportunidades..."):
                 juegos_hoy = statsapi.schedule(date=st.session_state.fecha_hoy, sportId=1)
                 
                 if not juegos_hoy:
                     st.warning("No hay juegos oficiales programados para la fecha de hoy.")
                     st.session_state.resultados_hoy = None
                 else:
-                    todas_las_jugadas_posibles = []
+                    resultados_jornada = []
                     equipos_procesados = set() 
                     
                     for juego in juegos_hoy:
@@ -434,7 +434,6 @@ if st.session_state.df_mlb is not None:
                         pct_final = int(round(max(min(pct_bruto, 0.99), 0.01) * 100))
                         
                         c_v, c_l = get_hybrid_run_projection(e_visita, e_local, df)
-                        
                         adj_runs_l = (whip_v - 1.30) * 1.5
                         adj_runs_v = (whip_l - 1.30) * 1.5
                         
@@ -445,57 +444,53 @@ if st.session_state.df_mlb is not None:
                         if total_runs > LINEA_TOTALES: ou_pick = "🔥 ALTA"
                         else: ou_pick = "🧊 BAJA"
                         
-                        # --- CONSTRUCCIÓN DE LAS DOS JUGADAS POSIBLES POR JUEGO ---
-                        
-                        # Jugada 1: Moneyline (Ganador)
-                        todas_las_jugadas_posibles.append({
-                            "⏰ Hora (ET)": hora_et,
-                            "✈️ Visitante": f"{e_visita} ({rec_v})",
-                            "🏠 Local": f"{e_local} ({rec_l})",
-                            "⚾ Abridores (L7 WHIP)": f"{p_visita or 'TBD'} ({whip_v:.2f}) vs {p_local or 'TBD'} ({whip_l:.2f})",
-                            "🎯 Jugada Recomendada": f"🏆 {ganador} (A Ganar)",
-                            "📊 Probabilidad": f"{pct_final}%",
-                            "score": pct_final
-                        })
-                        
-                        # Jugada 2: Totales (Over/Under)
                         diff_total = abs(total_runs - LINEA_TOTALES)
                         pseudo_prob = int(round(50 + (diff_total * 10)))
-                        todas_las_jugadas_posibles.append({
+                        
+                        # --- EVALUACIÓN: LA MEJOR JUGADA DEL JUEGO ---
+                        if pct_final >= pseudo_prob:
+                            jugada_str = f"🏆 {ganador} (A Ganar)"
+                            prob_str = f"{pct_final}%"
+                            score_val = pct_final
+                        else:
+                            jugada_str = f"⚖️ {ou_pick} de {LINEA_TOTALES} (Proy: {total_runs:.2f})"
+                            prob_str = f"{min(99, pseudo_prob)}%"
+                            score_val = pseudo_prob
+                            
+                        resultados_jornada.append({
                             "⏰ Hora (ET)": hora_et,
                             "✈️ Visitante": f"{e_visita} ({rec_v})",
                             "🏠 Local": f"{e_local} ({rec_l})",
                             "⚾ Abridores (L7 WHIP)": f"{p_visita or 'TBD'} ({whip_v:.2f}) vs {p_local or 'TBD'} ({whip_l:.2f})",
-                            "🎯 Jugada Recomendada": f"⚖️ {ou_pick} de {LINEA_TOTALES} (Proy: {total_runs:.2f})",
-                            "📊 Probabilidad": f"{min(99, pseudo_prob)}%",
-                            "score": pseudo_prob
+                            "🎯 Jugada Recomendada": jugada_str,
+                            "📊 Probabilidad": prob_str,
+                            "score": score_val
                         })
                         
-                    # Filtrar estricto al Top 3
-                    todas_las_jugadas_posibles.sort(key=lambda x: x['score'], reverse=True)
-                    top_3_definitivo = todas_las_jugadas_posibles[:3]
-                    
-                    # Eliminar la clave score para que no se muestre en la tabla
-                    for jugada in top_3_definitivo:
-                        del jugada['score']
-                        
-                    st.session_state.resultados_hoy = top_3_definitivo
+                    st.session_state.resultados_hoy = resultados_jornada
 
         if st.session_state.resultados_hoy is not None:
             if len(st.session_state.resultados_hoy) > 0:
                 df_resultados = pd.DataFrame(st.session_state.resultados_hoy)
                 
-                # Resaltar en verde las columnas clave de la jugada
-                def resaltar_jugada(row):
+                # Identificamos el índice de las 3 mejores jugadas de la cartelera
+                top_3_indices = df_resultados.nlargest(3, 'score').index.tolist()
+                
+                # Eliminamos la columna de score interno para que no se vea
+                df_display = df_resultados.drop(columns=['score'])
+                
+                def resaltar_top3_jornada(row):
                     styles = [''] * len(row)
-                    for j, col in enumerate(row.index):
-                        if col in ['🎯 Jugada Recomendada', '📊 Probabilidad']:
-                            styles[j] = 'background-color: #198754; color: white; font-weight: bold;'
+                    # Si la fila actual está en el Top 3, la pintamos de verde
+                    if row.name in top_3_indices:
+                        for j, col in enumerate(row.index):
+                            if col in ['🎯 Jugada Recomendada', '📊 Probabilidad']:
+                                styles[j] = 'background-color: #198754; color: white; font-weight: bold;'
                     return styles
 
-                df_estilizado = df_resultados.style.apply(resaltar_jugada, axis=1)
+                df_estilizado = df_display.style.apply(resaltar_top3_jornada, axis=1)
                 st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
-                st.success("✅ Análisis completado. Estas son las 3 jugadas con mayor ventaja matemática del día.")
+                st.success("✅ Análisis completado. Cartelera completa mostrada. El **Top 3 de mejores apuestas** ha sido resaltado en verde.")
             else:
                 st.info("Todos los partidos válidos de hoy ya han comenzado o finalizado.")
 
