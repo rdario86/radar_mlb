@@ -11,7 +11,7 @@ from sklearn.ensemble import RandomForestClassifier
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
-st.markdown("Proyección con Análisis Sabermétrico")
+st.markdown("Proyección Sabermétrica: Elo, Racha, H2H, Pitagórico, Rendimiento Dividido, Abridores (WHIP) y Totales")
 st.markdown("---")
 
 # --- PARÁMETROS SABERMÉTRICOS FIJOS ---
@@ -128,12 +128,13 @@ def get_hybrid_run_projection(away_team, home_team, df):
 
     return round(proj_away, 2), round(proj_home, 2)
 
-def get_pitcher_era(pitcher_name):
+def get_pitcher_whip(pitcher_name):
+    avg_whip = 1.30 
     if not pitcher_name or pitcher_name == 'TBD': 
-        return 4.50
+        return avg_whip
     try:
         players = statsapi.lookup_player(pitcher_name)
-        if not players: return 4.50
+        if not players: return avg_whip
         player_id = players[0]['id']
         
         try:
@@ -148,13 +149,16 @@ def get_pitcher_era(pitcher_name):
                                 splits.sort(key=lambda x: x.get('date', ''), reverse=True)
                                 last_7 = splits[:7]
                                 
-                                total_er = 0
+                                total_hits = 0
+                                total_bb = 0
                                 total_outs = 0
                                 
                                 for game in last_7:
                                     g_stats = game.get('stat', {})
-                                    total_er += int(g_stats.get('earnedRuns', 0))
+                                    total_hits += int(g_stats.get('hits', 0))
+                                    total_bb += int(g_stats.get('baseOnBalls', 0))
                                     ip_str = str(g_stats.get('inningsPitched', '0.0'))
+                                    
                                     if '.' in ip_str:
                                         full, frac = ip_str.split('.')
                                         total_outs += (int(full) * 3) + int(frac)
@@ -162,30 +166,28 @@ def get_pitcher_era(pitcher_name):
                                         total_outs += int(ip_str) * 3
                                         
                                 if total_outs > 0:
-                                    era = (total_er / (total_outs / 3.0)) * 9.0
-                                    return round(era, 2)
+                                    whip = (total_hits + total_bb) / (total_outs / 3.0)
+                                    return round(whip, 2)
                                 else:
-                                    return 4.50
+                                    return avg_whip
         except Exception:
             pass
             
         try:
             stats_season = statsapi.player_stat_data(player_id, group="pitching", type="season")
             if stats_season and 'stats' in stats_season and len(stats_season['stats']) > 0:
-                era_str = stats_season['stats'][0]['stats'].get('era', '-.--')
-                if era_str != '-.--':
-                    return float(era_str)
+                whip_str = stats_season['stats'][0]['stats'].get('whip', '-.--')
+                if whip_str != '-.--':
+                    return float(whip_str)
         except Exception:
             pass
                 
-        return 4.50
+        return avg_whip
     except:
-        return 4.50
+        return avg_whip
 
-# NUEVO MOTOR OPTIMIZADO: Cazador de Jonrones con Filtro Anti-HR-Ayer
 def get_hr_hunters(anio, fecha_hoy):
     try:
-        # 1. Mapear qué equipos juegan hoy y si son Locales o Visitantes
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
         equipos_hoy = {}
         for juego in juegos_hoy:
@@ -193,14 +195,12 @@ def get_hr_hunters(anio, fecha_hoy):
                 equipos_hoy[juego.get('home_id')] = 'Local'
                 equipos_hoy[juego.get('away_id')] = 'Visitante'
         
-        # 2. Descargar Top 60 (Límite extendido para compensar exclusiones)
         data = statsapi.get('stats_leaders', {'leaderCategories': 'homeRuns', 'season': anio, 'limit': 60, 'statGroup': 'hitting'})
         if not data or 'leagueLeaders' not in data or len(data['leagueLeaders']) == 0:
             return []
             
         leaders = data['leagueLeaders'][0].get('leaders', [])
         
-        # 3. Filtrar estrictamente a los jugadores que tienen juego HOY
         jugadores_activos = []
         for p in leaders:
             team_id = p.get('team', {}).get('id')
@@ -212,11 +212,9 @@ def get_hr_hunters(anio, fecha_hoy):
                 
         resultados = []
         
-        # Calcular la fecha de "Ayer"
         ayer_dt = datetime.datetime.strptime(fecha_hoy, '%Y-%m-%d') - datetime.timedelta(days=1)
         fecha_ayer_str = ayer_dt.strftime('%Y-%m-%d')
         
-        # 4. Procesar estadísticas de los jugadores activos y aplicar filtro Anti-Ayer
         for p in jugadores_activos:
             p_id = p.get('person', {}).get('id')
             p_name = p.get('person', {}).get('fullName')
@@ -246,25 +244,21 @@ def get_hr_hunters(anio, fecha_hoy):
                         g_stats = game.get('stat', {})
                         hr_en_juego = int(g_stats.get('homeRuns', 0))
                         
-                        # FILTRO ESTRICTO: Si dio HR ayer, lo marcamos para descartar
                         if g_date == fecha_ayer_str and hr_en_juego > 0:
                             dio_jonron_ayer = True
                             
                         l10_hr += hr_en_juego
                         l10_ab += int(g_stats.get('atBats', 0))
             
-            # Si el jugador dio HR ayer, se ignora por completo su postulación
             if dio_jonron_ayer:
                 continue
                 
-            l10_ab = max(1, l10_ab) # Evitar división por cero
+            l10_ab = max(1, l10_ab)
             
-            # FÓRMULA SABERMÉTRICA (Índice de Temperatura + Bono de Localía)
             freq_season = season_hr / season_ab
             freq_recent = l10_hr / l10_ab
             
-            bono_localia = 1.10 if condicion == 'Local' else 1.0 # +10% de boost si batea en casa
-            
+            bono_localia = 1.10 if condicion == 'Local' else 1.0 
             hr_index = ((freq_season * 0.3) + (freq_recent * 0.7)) * bono_localia
             
             resultados.append({
@@ -277,7 +271,6 @@ def get_hr_hunters(anio, fecha_hoy):
                 "score": hr_index
             })
             
-        # 5. ORDENAR Y RECORTAR AL TOP 4 EXACTO
         resultados.sort(key=lambda x: x['score'], reverse=True)
         resultados = resultados[:4]
         
@@ -364,20 +357,21 @@ if st.session_state.df_mlb is not None:
     df['Win'] = (df['Carreras_Local'] > df['Carreras_Visitante']).astype(int)
     clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df[['Elo_L', 'Elo_V']], df['Win'])
     
-    tab1, tab2 = st.tabs(["📅 Cartelera Automática (Juegos de Hoy)", "💣 Caza-Jonrones (Prop Bets)"])
+    tab1, tab2 = st.tabs(["📅 Las Mejores 3 Jugadas (Best Bets)", "💣 Caza-Jonrones (Prop Bets)"])
     
     with tab1:
-        st.markdown(f"### 🎯 Partidos programados para hoy: **{st.session_state.fecha_hoy}**")
+        st.markdown(f"### 🎯 Picks de Alta Confianza para hoy: **{st.session_state.fecha_hoy}**")
+        st.markdown("El radar escanea todos los juegos de la jornada, calcula las probabilidades de Ganadores y Totales, y **solo te muestra las 3 jugadas con mayor ventaja matemática.**")
         
-        if st.button("⚡ Analizar Jornada Completa", type="primary", use_container_width=True):
-            with st.spinner("Escaneando el calendario, calculando ERA real (L7) de abridores y evaluando Best Bets..."):
+        if st.button("⚡ Extraer Top 3 del Día", type="primary", use_container_width=True):
+            with st.spinner("Procesando todos los juegos, evaluando WHIP de abridores y filtrando el ruido..."):
                 juegos_hoy = statsapi.schedule(date=st.session_state.fecha_hoy, sportId=1)
                 
                 if not juegos_hoy:
                     st.warning("No hay juegos oficiales programados para la fecha de hoy.")
                     st.session_state.resultados_hoy = None
                 else:
-                    resultados_jornada = []
+                    todas_las_jugadas_posibles = []
                     equipos_procesados = set() 
                     
                     for juego in juegos_hoy:
@@ -417,12 +411,11 @@ if st.session_state.df_mlb is not None:
                         luck_v = get_pythagorean_luck(e_visita, df)
                         split_l, split_v = get_splits_win_pct(e_local, e_visita, df)
                         
-                        era_l = get_pitcher_era(p_local)
-                        era_v = get_pitcher_era(p_visita)
+                        whip_l = get_pitcher_whip(p_local)
+                        whip_v = get_pitcher_whip(p_visita)
                         
                         prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
-                        
-                        pitcher_adj = ((era_v - era_l) / 9.0) * 5.0 * 0.10
+                        pitcher_adj = (whip_v - whip_l) * 0.15 
                         
                         prob_final_local = (prob + 
                                             (racha_l - racha_v) * PESO_RACHA + 
@@ -442,97 +435,73 @@ if st.session_state.df_mlb is not None:
                         
                         c_v, c_l = get_hybrid_run_projection(e_visita, e_local, df)
                         
-                        adj_runs_l = (era_v - 4.50) * (5.0/9.0)
-                        adj_runs_v = (era_l - 4.50) * (5.0/9.0)
+                        adj_runs_l = (whip_v - 1.30) * 1.5
+                        adj_runs_v = (whip_l - 1.30) * 1.5
                         
                         c_l = max(0.5, c_l + adj_runs_l)
                         c_v = max(0.5, c_v + adj_runs_v)
-                        
-                        c_l_int = int(round(c_l))
-                        c_v_int = int(round(c_v))
-                        
-                        if prob_final_local > 0.5 and c_l_int <= c_v_int:
-                            c_l_int = c_v_int + 1
-                        elif prob_final_local <= 0.5 and c_v_int <= c_l_int:
-                            c_v_int = c_l_int + 1
-                            
                         total_runs = round(c_v + c_l, 2)
                         
                         if total_runs > LINEA_TOTALES: ou_pick = "🔥 ALTA"
                         else: ou_pick = "🧊 BAJA"
                         
-                        resultados_jornada.append({
+                        # --- CONSTRUCCIÓN DE LAS DOS JUGADAS POSIBLES POR JUEGO ---
+                        
+                        # Jugada 1: Moneyline (Ganador)
+                        todas_las_jugadas_posibles.append({
                             "⏰ Hora (ET)": hora_et,
                             "✈️ Visitante": f"{e_visita} ({rec_v})",
                             "🏠 Local": f"{e_local} ({rec_l})",
-                            "⚾ Abridores (L7 ERA)": f"{p_visita or 'TBD'} ({era_v:.2f}) vs {p_local or 'TBD'} ({era_l:.2f})",
-                            "🏆 Proyección": ganador,
-                            "📊 Prob.": f"{pct_final}%",
-                            "🎯 Marcador Proy.": f"{c_v_int} - {c_l_int}",
-                            f"⚖️ Total ({LINEA_TOTALES})": f"{ou_pick} ({total_runs:.2f})"
+                            "⚾ Abridores (L7 WHIP)": f"{p_visita or 'TBD'} ({whip_v:.2f}) vs {p_local or 'TBD'} ({whip_l:.2f})",
+                            "🎯 Jugada Recomendada": f"🏆 {ganador} (A Ganar)",
+                            "📊 Probabilidad": f"{pct_final}%",
+                            "score": pct_final
                         })
-                    st.session_state.resultados_hoy = resultados_jornada
+                        
+                        # Jugada 2: Totales (Over/Under)
+                        diff_total = abs(total_runs - LINEA_TOTALES)
+                        pseudo_prob = int(round(50 + (diff_total * 10)))
+                        todas_las_jugadas_posibles.append({
+                            "⏰ Hora (ET)": hora_et,
+                            "✈️ Visitante": f"{e_visita} ({rec_v})",
+                            "🏠 Local": f"{e_local} ({rec_l})",
+                            "⚾ Abridores (L7 WHIP)": f"{p_visita or 'TBD'} ({whip_v:.2f}) vs {p_local or 'TBD'} ({whip_l:.2f})",
+                            "🎯 Jugada Recomendada": f"⚖️ {ou_pick} de {LINEA_TOTALES} (Proy: {total_runs:.2f})",
+                            "📊 Probabilidad": f"{min(99, pseudo_prob)}%",
+                            "score": pseudo_prob
+                        })
+                        
+                    # Filtrar estricto al Top 3
+                    todas_las_jugadas_posibles.sort(key=lambda x: x['score'], reverse=True)
+                    top_3_definitivo = todas_las_jugadas_posibles[:3]
+                    
+                    # Eliminar la clave score para que no se muestre en la tabla
+                    for jugada in top_3_definitivo:
+                        del jugada['score']
+                        
+                    st.session_state.resultados_hoy = top_3_definitivo
 
         if st.session_state.resultados_hoy is not None:
             if len(st.session_state.resultados_hoy) > 0:
                 df_resultados = pd.DataFrame(st.session_state.resultados_hoy)
-                col_total_name = f"⚖️ Total ({LINEA_TOTALES})"
                 
-                todas_las_jugadas = []
-                for i, row in df_resultados.iterrows():
-                    ganador = row['🏆 Proyección']
-                    prob = int(str(row['📊 Prob.']).replace('%', ''))
-                    is_visita = ganador in row['✈️ Visitante']
-                    
-                    try: total_val = float(str(row[col_total_name]).split('(')[1].replace(')', ''))
-                    except: total_val = LINEA_TOTALES
-                    
-                    if (is_visita and prob >= 55) or (not is_visita and prob >= 65):
-                        todas_las_jugadas.append({'row': i, 'col': '🏆 Proyección', 'score': prob})
-                        
-                    diff_total = abs(total_val - LINEA_TOTALES)
-                    if diff_total >= 1.0: 
-                        pseudo_prob = 50 + (diff_total * 10)
-                        todas_las_jugadas.append({'row': i, 'col': col_total_name, 'score': pseudo_prob})
-                        
-                top_3_jugadas = sorted(todas_las_jugadas, key=lambda x: x['score'], reverse=True)[:3]
-                top_3_coordenadas = [(p['row'], p['col']) for p in top_3_jugadas]
-                
-                def aplicar_semaforo_top3(row):
+                # Resaltar en verde las columnas clave de la jugada
+                def resaltar_jugada(row):
                     styles = [''] * len(row)
-                    idx = row.name
-                    ganador = row['🏆 Proyección']
-                    prob = int(str(row['📊 Prob.']).replace('%', ''))
-                    is_visita = ganador in row['✈️ Visitante']
-                    
-                    try: total_val = float(str(row[col_total_name]).split('(')[1].replace(')', ''))
-                    except: total_val = LINEA_TOTALES
-                    diff_total = abs(total_val - LINEA_TOTALES)
-                    
                     for j, col in enumerate(row.index):
-                        if col == '🏆 Proyección':
-                            if (idx, col) in top_3_coordenadas:
-                                styles[j] = 'background-color: #198754; color: white; font-weight: bold;'
-                            elif (is_visita and prob >= 55) or (not is_visita and prob >= 65):
-                                styles[j] = 'background-color: #ffc107; color: black; font-weight: bold;'
-                                
-                        elif col == col_total_name:
-                            if (idx, col) in top_3_coordenadas:
-                                styles[j] = 'background-color: #198754; color: white; font-weight: bold;'
-                            elif diff_total >= 1.0:
-                                styles[j] = 'background-color: #ffc107; color: black; font-weight: bold;'
-                                
+                        if col in ['🎯 Jugada Recomendada', '📊 Probabilidad']:
+                            styles[j] = 'background-color: #198754; color: white; font-weight: bold;'
                     return styles
 
-                df_estilizado = df_resultados.style.apply(aplicar_semaforo_top3, axis=1)
+                df_estilizado = df_resultados.style.apply(resaltar_jugada, axis=1)
                 st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
-                st.success("✅ Análisis completado | 🟡 Alta Confianza | 🟢 Top 3 Mejores Jugadas (Best Bets)")
+                st.success("✅ Análisis completado. Estas son las 3 jugadas con mayor ventaja matemática del día.")
             else:
                 st.info("Todos los partidos válidos de hoy ya han comenzado o finalizado.")
 
     with tab2:
         st.markdown("### 💣 Radar de Jonrones: Filtro de Regresión + Localía")
-        st.markdown("Extrae al Top de bateadores activos HOY")
+        st.markdown("Extrae al Top de bateadores activos HOY. Bonifica con un **+10% a la localía** y ejecuta un filtro **Anti-Resaca**: si el bateador dio cuadrangular el día anterior, se le elimina automáticamente del análisis por baja probabilidad estadística de repetir. Sólo muestra a los 4 mejores.")
         
         if st.button("🔍 Escanear Mercado de Jonrones (Top 4 Limpio)", type="primary", use_container_width=True):
             with st.spinner("Descargando Game Logs, aplicando exclusión por jonrones recientes y calculando métricas de poder..."):
@@ -546,7 +515,7 @@ if st.session_state.df_mlb is not None:
         if st.session_state.resultados_hr is not None:
             df_hr = pd.DataFrame(st.session_state.resultados_hr)
             st.dataframe(df_hr, use_container_width=True, hide_index=True)
-            st.success("✅ Análisis de Poder finalizado. Tienes frente a ti las 4 mejores oportunidades del día.")
+            st.success("✅ Análisis de Poder finalizado. Tienes frente a ti las 4 mejores opciones del día.")
 
     # --- VISOR DE DATOS ---
     st.markdown("---")
