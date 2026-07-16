@@ -441,19 +441,19 @@ if st.session_state.df_mlb is not None:
                         c_v = max(0.5, c_v + adj_runs_v)
                         total_runs = round(c_v + c_l, 2)
                         
-                        if total_runs > LINEA_TOTALES: ou_pick = "🔥 ALTA"
-                        else: ou_pick = "🧊 BAJA"
+                        if total_runs > LINEA_TOTALES: ou_pick = "ALTA"
+                        else: ou_pick = "BAJA"
                         
                         diff_total = abs(total_runs - LINEA_TOTALES)
                         pseudo_prob = int(round(50 + (diff_total * 10)))
                         
                         # --- EVALUACIÓN: LA MEJOR JUGADA DEL JUEGO ---
                         if pct_final >= pseudo_prob:
-                            jugada_str = f"🏆 {ganador} (A Ganar)"
+                            jugada_str = f" {ganador} (A Ganar)"
                             prob_str = f"{pct_final}%"
                             score_val = pct_final
                         else:
-                            jugada_str = f"⚖️ {ou_pick} de {LINEA_TOTALES} (Proy: {total_runs:.2f})"
+                            jugada_str = f" {ou_pick} de {LINEA_TOTALES} (Proy: {total_runs:.2f})"
                             prob_str = f"{min(99, pseudo_prob)}%"
                             score_val = pseudo_prob
                             
