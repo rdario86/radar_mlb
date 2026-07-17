@@ -360,7 +360,7 @@ def get_strikeout_hunters(fecha_hoy):
                     "⚾ Abridor": p_name,
                     "👕 Equipo": p_team,
                     "⚔️ Rival": opp_name,
-                    "🔥 K/9 (L7)": int(round(k_per_9)), # Modificado: Convertido a número entero
+                    "🔥 K/9 (L7)": int(round(k_per_9)),
                     "📉 K% Rival": f"{opp_k_pct*100:.1f}%",
                     "🎯 Proy. Ponches": int(round(proj_k)), 
                     "score": proj_k
@@ -447,11 +447,11 @@ if st.session_state.df_mlb is not None:
     df['Win'] = (df['Carreras_Local'] > df['Carreras_Visitante']).astype(int)
     clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df[['Elo_L', 'Elo_V']], df['Win'])
     
-    tab1, tab2, tab3 = st.tabs(["📅 Cartelera (Top 3)", "💣 Caza-Jonrones", "🔥 Caza-Ponches (K-Props)"])
+    tab1, tab2, tab3 = st.tabs(["📅 Cartelera del Día", "💣 Caza-Jonrones", "🔥 Caza-Ponches (K-Props)"])
     
     with tab1:
         st.markdown(f"### 🎯 Partidos programados para hoy: **{st.session_state.fecha_hoy}**")
-        st.markdown("El radar escanea la jornada completa, determina la **única mejor jugada** por partido (Ganador vs Totales) y resalta en verde el **Top 3 definitivo** del día.")
+        st.markdown("El radar escanea la jornada completa, determina la **única mejor jugada** por partido (Ganador vs Totales). Evalúa las opciones mostradas sin distracciones visuales.")
         
         if st.button("⚡ Analizar y Extraer Mejores Jugadas", type="primary", use_container_width=True):
             with st.spinner("Procesando todos los juegos, evaluando WHIP de abridores y rankeando las mejores oportunidades..."):
@@ -534,9 +534,7 @@ if st.session_state.df_mlb is not None:
                         if total_runs > LINEA_TOTALES: ou_pick = "ALTA"
                         else: ou_pick = "BAJA"
                         
-                        # Convertimos proyección de carreras a número entero
                         total_runs_int = int(round(total_runs))
-                        
                         diff_total = abs(total_runs - LINEA_TOTALES)
                         pseudo_prob = int(round(50 + (diff_total * 10)))
                         
@@ -559,30 +557,22 @@ if st.session_state.df_mlb is not None:
                             "score": score_val
                         })
                         
+                    # Ordenar por probabilidad de mayor a menor para facilitar la lectura
+                    resultados_jornada.sort(key=lambda x: x['score'], reverse=True)
                     st.session_state.resultados_hoy = resultados_jornada
 
         if st.session_state.resultados_hoy is not None:
             if len(st.session_state.resultados_hoy) > 0:
                 df_resultados = pd.DataFrame(st.session_state.resultados_hoy)
-                
-                top_3_indices = df_resultados.nlargest(3, 'score').index.tolist()
                 df_display = df_resultados.drop(columns=['score'])
                 
-                def resaltar_top3_jornada(row):
-                    styles = [''] * len(row)
-                    if row.name in top_3_indices:
-                        for j, col in enumerate(row.index):
-                            if col in ['🎯 Jugada Recomendada', '📊 Probabilidad']:
-                                styles[j] = 'background-color: #198754; color: white; font-weight: bold;'
-                    return styles
-
-                # Aplicamos semáforo y forzamos alineación central
-                df_estilizado = df_display.style.apply(resaltar_top3_jornada, axis=1)\
+                # Sin resaltado verde, solo alineación central
+                df_estilizado = df_display.style\
                     .set_properties(**{'text-align': 'center'})\
                     .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
                 
                 st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
-                st.success("✅ Análisis completado. Cartelera completa mostrada. El **Top 3 de mejores apuestas** ha sido resaltado en verde.")
+                st.success("✅ Análisis completado. Cartelera lista para tu evaluación.")
             else:
                 st.info("Todos los partidos válidos de hoy ya han comenzado o finalizado.")
 
@@ -602,7 +592,6 @@ if st.session_state.df_mlb is not None:
         if st.session_state.resultados_hr is not None:
             df_hr = pd.DataFrame(st.session_state.resultados_hr)
             
-            # Alineación central para la tabla de jonrones
             df_hr_estilizado = df_hr.style\
                 .set_properties(**{'text-align': 'center'})\
                 .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
@@ -626,7 +615,6 @@ if st.session_state.df_mlb is not None:
         if st.session_state.resultados_k is not None:
             df_k = pd.DataFrame(st.session_state.resultados_k)
             
-            # Sin semáforo verde, solo alineación central
             df_k_estilizado = df_k.style\
                 .set_properties(**{'text-align': 'center'})\
                 .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
