@@ -555,30 +555,48 @@ if st.session_state.df_mlb is not None:
                             "⏰ Hora (ET)": hora_et,
                             "✈️ Visitante": f"{e_visita} ({rec_v})",
                             "🏠 Local": f"{e_local} ({rec_l})",
-                            "⚾ Abridores (L7 WHIP)": f"{p_visita or 'TBD'} ({whip_v:.2f}) vs {p_local or 'TBD'} ({whip_l:.2f})",
+                            "⚾ Abridor (V)": f"{p_visita or 'TBD'} ({whip_v:.2f})", # COLUMNA SEPARADA
+                            "⚾ Abridor (L)": f"{p_local or 'TBD'} ({whip_l:.2f})", # COLUMNA SEPARADA
                             "🎯 Jugada Recomendada": jugada_str,
                             "📊 Probabilidad": prob_str,
-                            "raw_time": game_dt_str or "9999-12-31T23:59:59Z", # Campo invisible para ordenar
+                            "raw_time": game_dt_str or "9999-12-31T23:59:59Z",
                             "score": score_val
                         })
                         
-                    # ORDEN CRONOLÓGICO: Organiza usando la hora original del servidor
                     resultados_jornada.sort(key=lambda x: x['raw_time'])
                     st.session_state.resultados_hoy = resultados_jornada
 
         if st.session_state.resultados_hoy is not None:
             if len(st.session_state.resultados_hoy) > 0:
                 df_resultados = pd.DataFrame(st.session_state.resultados_hoy)
-                
-                # Eliminamos las columnas invisibles de procesamiento ('score' y 'raw_time')
                 df_display = df_resultados.drop(columns=['score', 'raw_time'], errors='ignore')
                 
+                # FUNCIÓN DE SEMÁFORO PARA LOS ABRIDORES
+                def color_whip(row):
+                    styles = [''] * len(row)
+                    for j, col in enumerate(row.index):
+                        if col in ['⚾ Abridor (V)', '⚾ Abridor (L)']:
+                            try:
+                                # Extraer numéricamente el WHIP que está entre paréntesis
+                                whip_str = str(row[col]).split('(')[-1].replace(')', '')
+                                whip = float(whip_str)
+                                if whip < 1.00:
+                                    styles[j] = 'color: #00cc66; font-weight: bold;' # Verde Élite
+                                elif whip <= 1.30:
+                                    styles[j] = 'color: #ff9900; font-weight: bold;' # Naranja Promedio
+                                else:
+                                    styles[j] = 'color: #ff4d4d; font-weight: bold;' # Rojo Deficiente
+                            except:
+                                pass
+                    return styles
+                
                 df_estilizado = df_display.style\
+                    .apply(color_whip, axis=1)\
                     .set_properties(**{'text-align': 'center'})\
                     .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
                 
                 st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
-                st.success("✅ Análisis completado. Cartelera lista y ordenada cronológicamente (Temprano a Tarde).")
+                st.success("✅ Análisis completado. Cartelera lista y ordenada cronológicamente con semáforo de abridores.")
             else:
                 st.info("Todos los partidos válidos de hoy ya han comenzado o finalizado.")
 
