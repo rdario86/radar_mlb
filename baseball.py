@@ -11,7 +11,7 @@ from sklearn.ensemble import RandomForestClassifier
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
-st.markdown("Proyección Sabermétrica: Elo, Racha, H2H, Pitagórico, Rendimiento Dividido, Abridores (WHIP) y Totales")
+st.markdown("Proyección Sabermétrica: Elo, Racha, H2H, Pitagórico, Rendimiento Dividido, Abridores (WHIP), Jonrones y Ponches")
 st.markdown("---")
 
 # --- PARÁMETROS SABERMÉTRICOS FIJOS ---
@@ -186,6 +186,7 @@ def get_pitcher_whip(pitcher_name):
     except:
         return avg_whip
 
+# MOTOR 2: Cazador de Jonrones
 def get_hr_hunters(anio, fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
@@ -211,7 +212,6 @@ def get_hr_hunters(anio, fecha_hoy):
                 jugadores_activos.append(p)
                 
         resultados = []
-        
         ayer_dt = datetime.datetime.strptime(fecha_hoy, '%Y-%m-%d') - datetime.timedelta(days=1)
         fecha_ayer_str = ayer_dt.strftime('%Y-%m-%d')
         
@@ -254,7 +254,6 @@ def get_hr_hunters(anio, fecha_hoy):
                 continue
                 
             l10_ab = max(1, l10_ab)
-            
             freq_season = season_hr / season_ab
             freq_recent = l10_hr / l10_ab
             
@@ -289,11 +288,109 @@ def get_hr_hunters(anio, fecha_hoy):
     except Exception as e:
         return []
 
+# NUEVO MOTOR 3: Cazador de Ponches (K-Props)
+def get_strikeout_hunters(fecha_hoy):
+    try:
+        juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
+        if not juegos_hoy: return []
+        
+        pitchers_data = []
+        
+        for juego in juegos_hoy:
+            if juego.get('status', '') in ['Postponed', 'Cancelled']: continue
+            
+            # Matchups: (Pitcher, Equipo Pitcher, ID Rival, Equipo Rival)
+            matchups = [
+                (juego.get('home_probable_pitcher'), juego.get('home_name'), juego.get('away_id'), juego.get('away_name')),
+                (juego.get('away_probable_pitcher'), juego.get('away_name'), juego.get('home_id'), juego.get('home_name'))
+            ]
+            
+            for p_name, p_team, opp_id, opp_name in matchups:
+                if not p_name or p_name == 'TBD': continue
+                
+                players = statsapi.lookup_player(p_name)
+                if not players: continue
+                p_id = players[0]['id']
+                
+                # Extraer Game Logs (L7) del Pitcher
+                raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
+                person = raw_data.get('people', [{}])[0]
+                stats_blocks = person.get('stats', [])
+                
+                l7_ks = 0
+                l7_outs = 0
+                juegos_lanzados = 0
+                
+                for block in stats_blocks:
+                    if block.get('type', {}).get('displayName') == 'gameLog':
+                        splits = block.get('splits', [])
+                        splits.sort(key=lambda x: x.get('date', ''), reverse=True)
+                        last_7 = splits[:7]
+                        juegos_lanzados = len(last_7)
+                        
+                        for game in last_7:
+                            g_stats = game.get('stat', {})
+                            l7_ks += int(g_stats.get('strikeOuts', 0))
+                            ip_str = str(g_stats.get('inningsPitched', '0.0'))
+                            if '.' in ip_str:
+                                full, frac = ip_str.split('.')
+                                l7_outs += (int(full) * 3) + int(frac)
+                            else:
+                                l7_outs += int(ip_str) * 3
+                                
+                if juegos_lanzados == 0 or l7_outs == 0: continue
+                
+                # Promedios de pitcheo (L7)
+                ip_per_start = (l7_outs / 3.0) / juegos_lanzados
+                k_per_9 = (l7_ks / (l7_outs / 3.0)) * 9.0
+                avg_k_per_start = l7_ks / juegos_lanzados
+                
+                # Extraer Vulnerabilidad (K%) del equipo rival
+                team_raw = statsapi.get('teams', {'teamId': opp_id, 'hydrate': 'stats(group=[hitting],type=[season])'})
+                opp_ks = 0
+                opp_pa = 1
+                try:
+                    t_stats = team_raw['teams'][0]['teamStats'][0]['splits'][0]['stat']
+                    opp_ks = int(t_stats.get('strikeOuts', 0))
+                    opp_pa = int(t_stats.get('plateAppearances', 1))
+                except: pass
+                    
+                opp_k_pct = opp_ks / opp_pa if opp_pa > 1 else 0.225
+                
+                # Fórmula de Ajuste Sabermétrico (Promedio de K% en MLB es ~22.5%)
+                k_modifier = opp_k_pct / 0.225
+                proj_k = avg_k_per_start * k_modifier
+                
+                pitchers_data.append({
+                    "⚾ Abridor": p_name,
+                    "👕 Equipo": p_team,
+                    "⚔️ Rival": opp_name,
+                    "🔥 K/9 (L7)": round(k_per_9, 2),
+                    "📉 K% Rival": f"{opp_k_pct*100:.1f}%",
+                    "🎯 Proy. Ponches": round(proj_k, 2),
+                    "score": proj_k
+                })
+                
+        # Ordenar y seleccionar el Top 4
+        pitchers_data.sort(key=lambda x: x['score'], reverse=True)
+        top_4 = pitchers_data[:4]
+        
+        # Limpieza final para la tabla
+        for r in top_4:
+            r["🎯 Proy. Ponches"] = f"🔥 {r['🎯 Proy. Ponches']} Ks"
+            del r['score']
+            
+        return top_4
+        
+    except Exception as e:
+        return []
+
 # --- ESTADO DE SESIÓN ---
 if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
 if 'fecha_hoy' not in st.session_state: st.session_state.fecha_hoy = datetime.date.today().strftime('%Y-%m-%d')
 if 'resultados_hoy' not in st.session_state: st.session_state.resultados_hoy = None
 if 'resultados_hr' not in st.session_state: st.session_state.resultados_hr = None
+if 'resultados_k' not in st.session_state: st.session_state.resultados_k = None
 
 # --- BARRA LATERAL: MOTOR DE DATOS ---
 st.sidebar.markdown("### 📥 Sincronización")
@@ -357,7 +454,7 @@ if st.session_state.df_mlb is not None:
     df['Win'] = (df['Carreras_Local'] > df['Carreras_Visitante']).astype(int)
     clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df[['Elo_L', 'Elo_V']], df['Win'])
     
-    tab1, tab2 = st.tabs(["📅 Cartelera Completa (Mejor Jugada por Juego)", "💣 Caza-Jonrones (Prop Bets)"])
+    tab1, tab2, tab3 = st.tabs(["📅 Cartelera (Top 3)", "💣 Caza-Jonrones", "🔥 Caza-Ponches (K-Props)"])
     
     with tab1:
         st.markdown(f"### 🎯 Partidos programados para hoy: **{st.session_state.fecha_hoy}**")
@@ -441,19 +538,18 @@ if st.session_state.df_mlb is not None:
                         c_v = max(0.5, c_v + adj_runs_v)
                         total_runs = round(c_v + c_l, 2)
                         
-                        if total_runs > LINEA_TOTALES: ou_pick = "ALTA"
-                        else: ou_pick = "BAJA"
+                        if total_runs > LINEA_TOTALES: ou_pick = "🔥 ALTA"
+                        else: ou_pick = "🧊 BAJA"
                         
                         diff_total = abs(total_runs - LINEA_TOTALES)
                         pseudo_prob = int(round(50 + (diff_total * 10)))
                         
-                        # --- EVALUACIÓN: LA MEJOR JUGADA DEL JUEGO ---
                         if pct_final >= pseudo_prob:
-                            jugada_str = f" {ganador} (A Ganar)"
+                            jugada_str = f"🏆 {ganador} (A Ganar)"
                             prob_str = f"{pct_final}%"
                             score_val = pct_final
                         else:
-                            jugada_str = f" {ou_pick} de {LINEA_TOTALES} (Proy: {total_runs:.2f})"
+                            jugada_str = f"⚖️ {ou_pick} de {LINEA_TOTALES} (Proy: {total_runs:.2f})"
                             prob_str = f"{min(99, pseudo_prob)}%"
                             score_val = pseudo_prob
                             
@@ -473,15 +569,11 @@ if st.session_state.df_mlb is not None:
             if len(st.session_state.resultados_hoy) > 0:
                 df_resultados = pd.DataFrame(st.session_state.resultados_hoy)
                 
-                # Identificamos el índice de las 3 mejores jugadas de la cartelera
                 top_3_indices = df_resultados.nlargest(3, 'score').index.tolist()
-                
-                # Eliminamos la columna de score interno para que no se vea
                 df_display = df_resultados.drop(columns=['score'])
                 
                 def resaltar_top3_jornada(row):
                     styles = [''] * len(row)
-                    # Si la fila actual está en el Top 3, la pintamos de verde
                     if row.name in top_3_indices:
                         for j, col in enumerate(row.index):
                             if col in ['🎯 Jugada Recomendada', '📊 Probabilidad']:
@@ -511,6 +603,34 @@ if st.session_state.df_mlb is not None:
             df_hr = pd.DataFrame(st.session_state.resultados_hr)
             st.dataframe(df_hr, use_container_width=True, hide_index=True)
             st.success("✅ Análisis de Poder finalizado. Tienes frente a ti las 4 mejores opciones del día.")
+
+    with tab3:
+        st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival")
+        st.markdown("Este motor analiza los ponches de los abridores en sus últimos 7 juegos y los enfrenta matemáticamente contra el **Porcentaje de Ponches (K%)** de la ofensiva rival. Te entrega al Top 4 de lanzadores con mayores probabilidades de aplastar la línea estándar de **5.5 Ponches**.")
+        
+        if st.button("🎯 Cazar Ponches del Día (Top 4)", type="primary", use_container_width=True):
+            with st.spinner("Calculando K/9 de los abridores y procesando la vulnerabilidad ofensiva (K%) de los 30 equipos..."):
+                resultados = get_strikeout_hunters(st.session_state.fecha_hoy)
+                
+                if resultados:
+                    st.session_state.resultados_k = resultados
+                else:
+                    st.warning("No se detectaron abridores con suficiente información válida para proyectar hoy.")
+                    
+        if st.session_state.resultados_k is not None:
+            df_k = pd.DataFrame(st.session_state.resultados_k)
+            
+            # Resaltar la proyección de ponches
+            def resaltar_ponches(row):
+                styles = [''] * len(row)
+                for j, col in enumerate(row.index):
+                    if col == '🎯 Proy. Ponches':
+                        styles[j] = 'background-color: #198754; color: white; font-weight: bold;'
+                return styles
+                
+            df_k_estilizado = df_k.style.apply(resaltar_ponches, axis=1)
+            st.dataframe(df_k_estilizado, use_container_width=True, hide_index=True)
+            st.success("✅ Análisis de Ponches finalizado. Estos son los 4 brazos más dominantes del día.")
 
     # --- VISOR DE DATOS ---
     st.markdown("---")
