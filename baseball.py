@@ -288,7 +288,7 @@ def get_hr_hunters(anio, fecha_hoy):
     except Exception as e:
         return []
 
-# NUEVO MOTOR 3: Cazador de Ponches (K-Props)
+# MOTOR 3: Cazador de Ponches (K-Props)
 def get_strikeout_hunters(fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
@@ -299,7 +299,6 @@ def get_strikeout_hunters(fecha_hoy):
         for juego in juegos_hoy:
             if juego.get('status', '') in ['Postponed', 'Cancelled']: continue
             
-            # Matchups: (Pitcher, Equipo Pitcher, ID Rival, Equipo Rival)
             matchups = [
                 (juego.get('home_probable_pitcher'), juego.get('home_name'), juego.get('away_id'), juego.get('away_name')),
                 (juego.get('away_probable_pitcher'), juego.get('away_name'), juego.get('home_id'), juego.get('home_name'))
@@ -312,7 +311,6 @@ def get_strikeout_hunters(fecha_hoy):
                 if not players: continue
                 p_id = players[0]['id']
                 
-                # Extraer Game Logs (L7) del Pitcher
                 raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
                 person = raw_data.get('people', [{}])[0]
                 stats_blocks = person.get('stats', [])
@@ -340,12 +338,10 @@ def get_strikeout_hunters(fecha_hoy):
                                 
                 if juegos_lanzados == 0 or l7_outs == 0: continue
                 
-                # Promedios de pitcheo (L7)
                 ip_per_start = (l7_outs / 3.0) / juegos_lanzados
                 k_per_9 = (l7_ks / (l7_outs / 3.0)) * 9.0
                 avg_k_per_start = l7_ks / juegos_lanzados
                 
-                # Extraer Vulnerabilidad (K%) del equipo rival
                 team_raw = statsapi.get('teams', {'teamId': opp_id, 'hydrate': 'stats(group=[hitting],type=[season])'})
                 opp_ks = 0
                 opp_pa = 1
@@ -357,7 +353,6 @@ def get_strikeout_hunters(fecha_hoy):
                     
                 opp_k_pct = opp_ks / opp_pa if opp_pa > 1 else 0.225
                 
-                # Fórmula de Ajuste Sabermétrico (Promedio de K% en MLB es ~22.5%)
                 k_modifier = opp_k_pct / 0.225
                 proj_k = avg_k_per_start * k_modifier
                 
@@ -367,17 +362,15 @@ def get_strikeout_hunters(fecha_hoy):
                     "⚔️ Rival": opp_name,
                     "🔥 K/9 (L7)": round(k_per_9, 2),
                     "📉 K% Rival": f"{opp_k_pct*100:.1f}%",
-                    "🎯 Proy. Ponches": round(proj_k, 2),
+                    "🎯 Proy. Ponches": int(round(proj_k)), # Convertido a entero
                     "score": proj_k
                 })
                 
-        # Ordenar y seleccionar el Top 4
         pitchers_data.sort(key=lambda x: x['score'], reverse=True)
         top_4 = pitchers_data[:4]
         
-        # Limpieza final para la tabla
         for r in top_4:
-            r["🎯 Proy. Ponches"] = f"🔥 {r['🎯 Proy. Ponches']} Ks"
+            r["🎯 Proy. Ponches"] = f"{r['🎯 Proy. Ponches']} Ks" 
             del r['score']
             
         return top_4
@@ -538,18 +531,21 @@ if st.session_state.df_mlb is not None:
                         c_v = max(0.5, c_v + adj_runs_v)
                         total_runs = round(c_v + c_l, 2)
                         
-                        if total_runs > LINEA_TOTALES: ou_pick = "🔥 ALTA"
-                        else: ou_pick = "🧊 BAJA"
+                        if total_runs > LINEA_TOTALES: ou_pick = "ALTA"
+                        else: ou_pick = "BAJA"
+                        
+                        # Convertimos proyección de carreras a número entero
+                        total_runs_int = int(round(total_runs))
                         
                         diff_total = abs(total_runs - LINEA_TOTALES)
                         pseudo_prob = int(round(50 + (diff_total * 10)))
                         
                         if pct_final >= pseudo_prob:
-                            jugada_str = f"🏆 {ganador} (A Ganar)"
+                            jugada_str = f"{ganador} (A Ganar)"
                             prob_str = f"{pct_final}%"
                             score_val = pct_final
                         else:
-                            jugada_str = f"⚖️ {ou_pick} de {LINEA_TOTALES} (Proy: {total_runs:.2f})"
+                            jugada_str = f"{ou_pick} de {LINEA_TOTALES} (Proy: {total_runs_int})"
                             prob_str = f"{min(99, pseudo_prob)}%"
                             score_val = pseudo_prob
                             
@@ -580,7 +576,11 @@ if st.session_state.df_mlb is not None:
                                 styles[j] = 'background-color: #198754; color: white; font-weight: bold;'
                     return styles
 
-                df_estilizado = df_display.style.apply(resaltar_top3_jornada, axis=1)
+                # Aplicamos semáforo y forzamos alineación central
+                df_estilizado = df_display.style.apply(resaltar_top3_jornada, axis=1)\
+                    .set_properties(**{'text-align': 'center'})\
+                    .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
+                
                 st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
                 st.success("✅ Análisis completado. Cartelera completa mostrada. El **Top 3 de mejores apuestas** ha sido resaltado en verde.")
             else:
@@ -601,7 +601,13 @@ if st.session_state.df_mlb is not None:
                     
         if st.session_state.resultados_hr is not None:
             df_hr = pd.DataFrame(st.session_state.resultados_hr)
-            st.dataframe(df_hr, use_container_width=True, hide_index=True)
+            
+            # Alineación central para la tabla de jonrones
+            df_hr_estilizado = df_hr.style\
+                .set_properties(**{'text-align': 'center'})\
+                .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
+                
+            st.dataframe(df_hr_estilizado, use_container_width=True, hide_index=True)
             st.success("✅ Análisis de Poder finalizado. Tienes frente a ti las 4 mejores opciones del día.")
 
     with tab3:
@@ -620,15 +626,11 @@ if st.session_state.df_mlb is not None:
         if st.session_state.resultados_k is not None:
             df_k = pd.DataFrame(st.session_state.resultados_k)
             
-            # Resaltar la proyección de ponches
-            def resaltar_ponches(row):
-                styles = [''] * len(row)
-                for j, col in enumerate(row.index):
-                    if col == '🎯 Proy. Ponches':
-                        styles[j] = 'background-color: #198754; color: white; font-weight: bold;'
-                return styles
+            # Sin semáforo verde, solo alineación central
+            df_k_estilizado = df_k.style\
+                .set_properties(**{'text-align': 'center'})\
+                .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
                 
-            df_k_estilizado = df_k.style.apply(resaltar_ponches, axis=1)
             st.dataframe(df_k_estilizado, use_container_width=True, hide_index=True)
             st.success("✅ Análisis de Ponches finalizado. Estos son los 4 brazos más dominantes del día.")
 
