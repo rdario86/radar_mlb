@@ -123,7 +123,6 @@ def get_hybrid_run_projection(away_team, home_team, df):
 
     return round(proj_away, 2), round(proj_home, 2)
 
-# Se agrega fecha de corte para prevenir trampa (Data Leakage)
 def get_pitcher_whip(pitcher_name, fecha_corte):
     avg_whip = 1.30 
     if not pitcher_name or pitcher_name == 'TBD': 
@@ -142,7 +141,6 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
                         if stat_block.get('type', {}).get('displayName') == 'gameLog':
                             splits = stat_block.get('splits', [])
                             if splits:
-                                # Filtro estricto: Solo usar salidas ANTES de la fecha consultada
                                 valid_splits = [s for s in splits if s.get('date', '') < fecha_corte]
                                 valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
                                 last_7 = valid_splits[:7]
@@ -212,7 +210,6 @@ def get_hr_hunters(anio, fecha_hoy):
                 elif block.get('type', {}).get('displayName') == 'gameLog':
                     splits = block.get('splits', [])
                     
-                    # Evitar la trampa: Calculamos rachas solo con juegos ANTERIORES
                     valid_splits = [s for s in splits if s.get('date', '') < fecha_hoy]
                     valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
                     
@@ -223,7 +220,6 @@ def get_hr_hunters(anio, fecha_hoy):
                         l10_hr += int(g_stats.get('homeRuns', 0))
                         l10_ab += int(g_stats.get('atBats', 0))
                         
-                    # Auditoría: ¿Dio jonrón hoy?
                     hr_hoy_real = sum([int(s.get('stat', {}).get('homeRuns', 0)) for s in splits if s.get('date') == fecha_hoy])
             
             if dio_jonron_ayer: continue
@@ -231,7 +227,6 @@ def get_hr_hunters(anio, fecha_hoy):
             l10_ab = max(1, l10_ab)
             hr_index = ((season_hr / season_ab * 0.3) + (l10_hr / l10_ab * 0.7)) * (1.10 if condicion == 'Local' else 1.0)
             
-            # Evaluación Final
             eval_str = "⏳ Pendiente"
             if p['game_status'] in ['Final', 'Game Over']:
                 eval_str = "✅ Acierto" if hr_hoy_real > 0 else "❌ Fallo"
@@ -292,7 +287,6 @@ def get_strikeout_hunters(fecha_hoy):
                     if block.get('type', {}).get('displayName') == 'gameLog':
                         splits = block.get('splits', [])
                         
-                        # Filtro Anti-Trampas
                         valid_splits = [s for s in splits if s.get('date', '') < fecha_hoy]
                         valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
                         last_7 = valid_splits[:7]
@@ -307,7 +301,6 @@ def get_strikeout_hunters(fecha_hoy):
                                 l7_outs += (int(full) * 3) + int(frac)
                             else: l7_outs += int(ip_str) * 3
                                 
-                        # Auditoría: ¿Cuántos K hizo hoy?
                         ks_hoy_real = sum([int(s.get('stat', {}).get('strikeOuts', 0)) for s in splits if s.get('date') == fecha_hoy])
                                 
                 if juegos_lanzados == 0 or l7_outs == 0: continue
@@ -352,8 +345,8 @@ if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
 st.sidebar.markdown("### 🗓️ Motor de Tiempo")
 st.sidebar.markdown("Las fechas cambian estrictamente a las 12:00 AM Hora del Este (ET). Selecciona días pasados para auditar el rendimiento del radar.")
 
-# Captura la hora exacta en Nueva York para forzar el cambio de día
-tz_et = 'US/Eastern'
+# ¡CORRECCIÓN DE ZONA HORARIA AQUÍ!
+tz_et = 'America/New_York'
 hoy_et = pd.Timestamp.now(tz_et).date()
 
 fecha_sel = st.sidebar.date_input("Fecha de Análisis:", hoy_et)
@@ -390,7 +383,6 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
             df_full.columns = ['Local', 'Visitante', 'Carreras_Local', 'Carreras_Visitante', 'Date']
             df_full = df_full[df_full['Local'].isin(MLB_TEAM_WHITELIST) & df_full['Visitante'].isin(MLB_TEAM_WHITELIST)]
             
-            # Recálculo de ELO histórico general
             elo_dict = {team: 1500.0 for team in MLB_TEAM_WHITELIST}
             h_elo_l, h_elo_v = [], []
             for _, row in df_full.iterrows():
@@ -409,7 +401,6 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
 
 # --- ÁREA PRINCIPAL ---
 if st.session_state.df_mlb is not None:
-    # FILTRO DE FUGAS DE DATOS: Cortamos el DataFrame ANTES de la fecha seleccionada
     df_historico = st.session_state.df_mlb.copy()
     df_filtrado = df_historico[df_historico['Date'] < st.session_state.fecha_hoy].copy()
     
@@ -437,7 +428,6 @@ if st.session_state.df_mlb is not None:
                         
                         for juego in juegos_hoy:
                             estado_juego = juego.get('status', '')
-                            # Permitimos todos los estados para poder auditar los que ya terminaron
                             estados_validos = ['Scheduled', 'Pre-Game', 'Warmup', 'Delayed Start', 'In Progress', 'Final', 'Game Over']
                             if estado_juego not in estados_validos: continue
                                 
@@ -461,7 +451,6 @@ if st.session_state.df_mlb is not None:
                                 except: hora_et = 'TBD'
                             else: hora_et = 'TBD'
                                 
-                            # USAMOS df_filtrado PARA NO HACER TRAMPA
                             rec_l = get_team_record(e_local, df_filtrado)
                             rec_v = get_team_record(e_visita, df_filtrado)
                             
@@ -508,7 +497,6 @@ if st.session_state.df_mlb is not None:
                                 prob_str = f"{min(99, pseudo_prob)}%"
                                 score_val = pseudo_prob
                                 
-                            # MODULO DE AUDITORÍA (Verificación de resultados)
                             eval_str = "⏳ Pendiente"
                             if estado_juego in ['Final', 'Game Over']:
                                 r_local = juego.get('home_score', 0)
