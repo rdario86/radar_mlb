@@ -186,7 +186,6 @@ def get_pitcher_whip(pitcher_name):
     except:
         return avg_whip
 
-# MOTOR 2: Cazador de Jonrones
 def get_hr_hunters(anio, fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
@@ -288,7 +287,6 @@ def get_hr_hunters(anio, fecha_hoy):
     except Exception as e:
         return []
 
-# MOTOR 3: Cazador de Ponches (K-Props)
 def get_strikeout_hunters(fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
@@ -483,9 +481,15 @@ if st.session_state.df_mlb is not None:
                             
                         game_dt_str = juego.get('game_datetime', '')
                         if game_dt_str:
-                            try: hora_et = pd.to_datetime(game_dt_str).tz_convert('US/Eastern').strftime('%I:%M %p')
-                            except: hora_et = 'TBD'
-                        else: hora_et = 'TBD'
+                            try:
+                                dt = pd.to_datetime(game_dt_str)
+                                if dt.tzinfo is None:
+                                    dt = dt.tz_localize('UTC')
+                                hora_et = dt.tz_convert('America/New_York').strftime('%I:%M %p')
+                            except:
+                                hora_et = 'TBD'
+                        else: 
+                            hora_et = 'TBD'
                             
                         rec_l = get_team_record(e_local, df)
                         rec_v = get_team_record(e_visita, df)
@@ -554,25 +558,27 @@ if st.session_state.df_mlb is not None:
                             "⚾ Abridores (L7 WHIP)": f"{p_visita or 'TBD'} ({whip_v:.2f}) vs {p_local or 'TBD'} ({whip_l:.2f})",
                             "🎯 Jugada Recomendada": jugada_str,
                             "📊 Probabilidad": prob_str,
+                            "raw_time": game_dt_str or "9999-12-31T23:59:59Z", # Campo invisible para ordenar
                             "score": score_val
                         })
                         
-                    # Ordenar por probabilidad de mayor a menor para facilitar la lectura
-                    resultados_jornada.sort(key=lambda x: x['score'], reverse=True)
+                    # ORDEN CRONOLÓGICO: Organiza usando la hora original del servidor
+                    resultados_jornada.sort(key=lambda x: x['raw_time'])
                     st.session_state.resultados_hoy = resultados_jornada
 
         if st.session_state.resultados_hoy is not None:
             if len(st.session_state.resultados_hoy) > 0:
                 df_resultados = pd.DataFrame(st.session_state.resultados_hoy)
-                df_display = df_resultados.drop(columns=['score'])
                 
-                # Sin resaltado verde, solo alineación central
+                # Eliminamos las columnas invisibles de procesamiento ('score' y 'raw_time')
+                df_display = df_resultados.drop(columns=['score', 'raw_time'], errors='ignore')
+                
                 df_estilizado = df_display.style\
                     .set_properties(**{'text-align': 'center'})\
                     .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
                 
                 st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
-                st.success("✅ Análisis completado. Cartelera lista para tu evaluación.")
+                st.success("✅ Análisis completado. Cartelera lista y ordenada cronológicamente (Temprano a Tarde).")
             else:
                 st.info("Todos los partidos válidos de hoy ya han comenzado o finalizado.")
 
