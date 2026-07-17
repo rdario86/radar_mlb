@@ -561,7 +561,7 @@ if st.session_state.df_mlb is not None:
                 else: st.warning("No se detectaron líderes válidos o datos para esta fecha.")
 
     with tab3:
-        st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival")
+        st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival (Línea 5.5 ponches)")
         if st.button("🎯 Cazar Ponches del Día (Top 4)", type="primary", use_container_width=True):
             with st.spinner("Haciendo el cruce de vulnerabilidad y auditando ponches finales..."):
                 resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
