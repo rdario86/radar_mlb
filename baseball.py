@@ -11,7 +11,7 @@ from sklearn.ensemble import RandomForestClassifier
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
-st.markdown("Proyección Sabermétrica: Elo, Racha, H2H, Pitagórico, Rendimiento Dividido, Abridores (WHIP), Jonrones y Ponches")
+st.markdown("Proyección Sabermétrica")
 st.markdown("---")
 
 # --- PARÁMETROS SABERMÉTRICOS FIJOS ---
@@ -449,7 +449,7 @@ if st.session_state.df_mlb is not None:
     
     with tab1:
         st.markdown(f"### 🎯 Partidos programados para hoy: **{st.session_state.fecha_hoy}**")
-        st.markdown("El radar escanea la jornada completa, determina la **única mejor jugada** por partido (Ganador vs Totales). Evalúa las opciones mostradas sin distracciones visuales.")
+        st.markdown("El radar escanea la jornada completa, determina la **única mejor jugada** por partido (Ganador vs Totales)")
         
         if st.button("⚡ Analizar y Extraer Mejores Jugadas", type="primary", use_container_width=True):
             with st.spinner("Procesando todos los juegos, evaluando WHIP de abridores y rankeando las mejores oportunidades..."):
@@ -602,7 +602,7 @@ if st.session_state.df_mlb is not None:
 
     with tab2:
         st.markdown("### 💣 Radar de Jonrones: Filtro de Regresión + Localía")
-        st.markdown("Extrae al Top de bateadores activos HOY. Bonifica con un **+10% a la localía** y ejecuta un filtro **Anti-Resaca**: si el bateador dio cuadrangular el día anterior, se le elimina automáticamente del análisis por baja probabilidad estadística de repetir. Sólo muestra a los 4 mejores.")
+        st.markdown("Extrae al Top de bateadores activos HOY. Sólo muestra a los 4 mejores.")
         
         if st.button("🔍 Escanear Mercado de Jonrones (Top 4 Limpio)", type="primary", use_container_width=True):
             with st.spinner("Descargando Game Logs, aplicando exclusión por jonrones recientes y calculando métricas de poder..."):
@@ -625,7 +625,7 @@ if st.session_state.df_mlb is not None:
 
     with tab3:
         st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival")
-        st.markdown("Este motor analiza los ponches de los abridores en sus últimos 7 juegos y los enfrenta matemáticamente contra el **Porcentaje de Ponches (K%)** de la ofensiva rival. Te entrega al Top 4 de lanzadores con mayores probabilidades de aplastar la línea estándar de **5.5 Ponches**.")
+        st.markdown("Este motor analiza los ponches de los abridores en sus últimos 7 juegos. Te entrega al Top 4 de lanzadores con mayores probabilidades de aplastar la línea estándar de **5.5 Ponches**.")
         
         if st.button("🎯 Cazar Ponches del Día (Top 4)", type="primary", use_container_width=True):
             with st.spinner("Calculando K/9 de los abridores y procesando la vulnerabilidad ofensiva (K%) de los 30 equipos..."):
