@@ -360,9 +360,9 @@ def get_strikeout_hunters(fecha_hoy):
                     "⚾ Abridor": p_name,
                     "👕 Equipo": p_team,
                     "⚔️ Rival": opp_name,
-                    "🔥 K/9 (L7)": round(k_per_9, 2),
+                    "🔥 K/9 (L7)": int(round(k_per_9)), # Modificado: Convertido a número entero
                     "📉 K% Rival": f"{opp_k_pct*100:.1f}%",
-                    "🎯 Proy. Ponches": int(round(proj_k)), # Convertido a entero
+                    "🎯 Proy. Ponches": int(round(proj_k)), 
                     "score": proj_k
                 })
                 
