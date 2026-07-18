@@ -119,6 +119,34 @@ def get_hybrid_run_projection(away_team, home_team, df):
     proj_home = base_runs_home * m_off_home * 1.0
     return round(proj_away, 2), round(proj_home, 2)
 
+# --- NUEVO: RESCATISTA DE LANZADORES ---
+def get_starting_pitchers(juego):
+    """
+    Soluciona el problema de la MLB API que borra a los 'probable_pitchers' 
+    cuando el juego empieza o finaliza.
+    """
+    hp = juego.get('home_probable_pitcher', '')
+    ap = juego.get('away_probable_pitcher', '')
+    
+    if (not hp or hp == 'TBD' or not ap or ap == 'TBD'):
+        try:
+            game_id = juego.get('game_id')
+            if game_id:
+                box = statsapi.boxscore_data(game_id)
+                # Rescatar Abridor Local
+                if not hp or hp == 'TBD':
+                    hp_list = box.get('home', {}).get('pitchers', [])
+                    if hp_list:
+                        hp = box.get('playerInfo', {}).get(f"ID{hp_list[0]}", {}).get('fullName', 'TBD')
+                # Rescatar Abridor Visitante
+                if not ap or ap == 'TBD':
+                    ap_list = box.get('away', {}).get('pitchers', [])
+                    if ap_list:
+                        ap = box.get('playerInfo', {}).get(f"ID{ap_list[0]}", {}).get('fullName', 'TBD')
+        except: pass
+            
+    return hp, ap
+
 def get_pitcher_whip(pitcher_name, fecha_corte):
     avg_whip = 1.30 
     if not pitcher_name or pitcher_name == 'TBD': return avg_whip
@@ -205,7 +233,6 @@ def get_hr_hunters(anio, fecha_hoy):
                 elif block.get('type', {}).get('displayName') == 'gameLog':
                     splits = block.get('splits', [])
                     
-                    # Filtro estricto previo a HOY
                     valid_splits = [s for s in splits if s.get('date', '') < fecha_hoy]
                     valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
                     
@@ -216,7 +243,6 @@ def get_hr_hunters(anio, fecha_hoy):
                         l10_hr += int(g_stats.get('homeRuns', 0))
                         l10_ab += int(g_stats.get('atBats', 0))
                         
-                    # Capturar datos en vivo de hoy para la purga
                     for game in splits:
                         if game.get('date') == fecha_hoy:
                             hr_hoy_real += int(game.get('stat', {}).get('homeRuns', 0))
@@ -224,13 +250,12 @@ def get_hr_hunters(anio, fecha_hoy):
             
             if dio_jonron_ayer: continue
             
-            # PURGA MATEMÁTICA: Restar cualquier actividad en vivo para estabilizar el Score
             season_hr = max(0, season_hr - hr_hoy_real)
             season_ab = max(1, season_ab - ab_hoy_real)
             l10_ab = max(1, l10_ab)
             
             hr_index = ((season_hr / season_ab * 0.3) + (l10_hr / l10_ab * 0.7)) * (1.10 if condicion == 'Local' else 1.0)
-            hr_index_rounded = round(hr_index, 4) # Evitar reordenamiento por fluctuaciones de coma flotante
+            hr_index_rounded = round(hr_index, 4) 
             
             eval_str = "⏳ Pendiente"
             if p['game_status'] in ['Final', 'Game Over']:
@@ -247,7 +272,6 @@ def get_hr_hunters(anio, fecha_hoy):
                 "score": hr_index_rounded
             })
             
-        # Ordenamiento Determinista: Score principal + Nombre para evitar cruces en empates
         resultados.sort(key=lambda x: (x['score'], x['⚾ Bateador']), reverse=True)
         resultados = resultados[:4]
         
@@ -274,9 +298,13 @@ def get_strikeout_hunters(fecha_hoy):
         for juego in juegos_hoy:
             if juego.get('status', '') in ['Postponed', 'Cancelled']: continue
             g_status = juego.get('status', '')
+            
+            # --- USO DEL RESCATISTA DE ABRIDORES ---
+            p_local, p_visita = get_starting_pitchers(juego)
+            
             matchups = [
-                (juego.get('home_probable_pitcher'), juego.get('home_name'), juego.get('away_id'), juego.get('away_name')),
-                (juego.get('away_probable_pitcher'), juego.get('away_name'), juego.get('home_id'), juego.get('home_name'))
+                (p_local, juego.get('home_name'), juego.get('away_id'), juego.get('away_name')),
+                (p_visita, juego.get('away_name'), juego.get('home_id'), juego.get('home_name'))
             ]
             
             for p_name, p_team, opp_id, opp_name in matchups:
@@ -322,7 +350,6 @@ def get_strikeout_hunters(fecha_hoy):
                 opp_k_pct = opp_ks / opp_pa if opp_pa > 1 else 0.225
                 proj_k = avg_k_per_start * (opp_k_pct / 0.225)
                 
-                # PURGA: Redondeo estricto para evitar reordenamiento por cambios microscópicos en % del rival en vivo
                 proj_k_rounded = round(proj_k, 3) 
                 
                 eval_str = "⏳ Pendiente"
@@ -340,7 +367,6 @@ def get_strikeout_hunters(fecha_hoy):
                     "score": proj_k_rounded
                 })
                 
-        # Ordenamiento Determinista
         pitchers_data.sort(key=lambda x: (x['score'], x['⚾ Abridor']), reverse=True)
         top_4 = pitchers_data[:4]
         for r in top_4:
@@ -442,8 +468,9 @@ if st.session_state.df_mlb is not None:
                                 
                             e_local = juego['home_name']
                             e_visita = juego['away_name']
-                            p_local = juego.get('home_probable_pitcher', '')
-                            p_visita = juego.get('away_probable_pitcher', '')
+                            
+                            # --- USO DEL RESCATISTA DE ABRIDORES ---
+                            p_local, p_visita = get_starting_pitchers(juego)
                             
                             if e_local not in MLB_TEAM_WHITELIST or e_visita not in MLB_TEAM_WHITELIST: continue
                             if e_local in equipos_procesados or e_visita in equipos_procesados: continue
