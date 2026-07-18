@@ -69,13 +69,11 @@ def get_team_record(team, df):
 def get_pythagorean_luck(team, df):
     team_games = df[(df['Local'] == team) | (df['Visitante'] == team)]
     if len(team_games) == 0: return 0.0
-    
     rs = sum(row['Carreras_Local'] if row['Local'] == team else row['Carreras_Visitante'] for _, row in team_games.iterrows())
     ra = sum(row['Carreras_Visitante'] if row['Local'] == team else row['Carreras_Local'] for _, row in team_games.iterrows())
     if rs + ra == 0: return 0.0
     exp = 1.83
     pyth_exp = (rs**exp) / ((rs**exp) + (ra**exp)) if (rs**exp + ra**exp) > 0 else 0.5
-    
     wins = sum(1 for _, row in team_games.iterrows() 
                if (row['Local'] == team and row['Carreras_Local'] > row['Carreras_Visitante']) or 
                   (row['Visitante'] == team and row['Carreras_Visitante'] > row['Carreras_Local']))
@@ -92,7 +90,6 @@ def get_splits_win_pct(home_team, away_team, df):
 def get_hybrid_run_projection(away_team, home_team, df):
     rs_a_10, ra_a_10 = get_run_metrics(away_team, df, 10)
     rs_h_10, ra_h_10 = get_run_metrics(home_team, df, 10)
-    
     base_runs_away = (rs_a_10 + ra_h_10) / 2.0
     base_runs_home = (rs_h_10 + ra_a_10) / 2.0
 
@@ -120,18 +117,15 @@ def get_hybrid_run_projection(away_team, home_team, df):
     
     proj_away = base_runs_away * m_off_away * m_def_home
     proj_home = base_runs_home * m_off_home * 1.0
-
     return round(proj_away, 2), round(proj_home, 2)
 
 def get_pitcher_whip(pitcher_name, fecha_corte):
     avg_whip = 1.30 
-    if not pitcher_name or pitcher_name == 'TBD': 
-        return avg_whip
+    if not pitcher_name or pitcher_name == 'TBD': return avg_whip
     try:
         players = statsapi.lookup_player(pitcher_name)
         if not players: return avg_whip
         player_id = players[0]['id']
-        
         try:
             raw_data = statsapi.get('people', {'personIds': player_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
             if 'people' in raw_data and len(raw_data['people']) > 0:
@@ -161,8 +155,7 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
                                 else: return avg_whip
         except Exception: pass
         return avg_whip
-    except:
-        return avg_whip
+    except: return avg_whip
 
 def get_hr_hunters(anio, fecha_hoy):
     try:
@@ -194,22 +187,25 @@ def get_hr_hunters(anio, fecha_hoy):
             p_id = p.get('person', {}).get('id')
             p_name = p.get('person', {}).get('fullName')
             team_name = p.get('team_name', 'Unknown')
-            season_hr = int(p.get('value', 0))
             condicion = p.get('condicion_hoy', 'Visitante')
             
             raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'stats(group=[hitting],type=[season,gameLog])'})
             person = raw_data.get('people', [{}])[0]
             stats_blocks = person.get('stats', [])
             
-            season_ab = 1; l10_hr = 0; l10_ab = 0; hr_hoy_real = 0
+            season_ab = 1; season_hr = 0
+            l10_hr = 0; l10_ab = 0
+            hr_hoy_real = 0; ab_hoy_real = 0
             dio_jonron_ayer = False
             
             for block in stats_blocks:
                 if block.get('type', {}).get('displayName') == 'season':
-                    season_ab = max(1, int(block.get('splits', [{}])[0].get('stat', {}).get('atBats', 1)))
+                    season_ab = int(block.get('splits', [{}])[0].get('stat', {}).get('atBats', 1))
+                    season_hr = int(block.get('splits', [{}])[0].get('stat', {}).get('homeRuns', 0))
                 elif block.get('type', {}).get('displayName') == 'gameLog':
                     splits = block.get('splits', [])
                     
+                    # Filtro estricto previo a HOY
                     valid_splits = [s for s in splits if s.get('date', '') < fecha_hoy]
                     valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
                     
@@ -220,12 +216,21 @@ def get_hr_hunters(anio, fecha_hoy):
                         l10_hr += int(g_stats.get('homeRuns', 0))
                         l10_ab += int(g_stats.get('atBats', 0))
                         
-                    hr_hoy_real = sum([int(s.get('stat', {}).get('homeRuns', 0)) for s in splits if s.get('date') == fecha_hoy])
+                    # Capturar datos en vivo de hoy para la purga
+                    for game in splits:
+                        if game.get('date') == fecha_hoy:
+                            hr_hoy_real += int(game.get('stat', {}).get('homeRuns', 0))
+                            ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
             
             if dio_jonron_ayer: continue
-                
+            
+            # PURGA MATEMÁTICA: Restar cualquier actividad en vivo para estabilizar el Score
+            season_hr = max(0, season_hr - hr_hoy_real)
+            season_ab = max(1, season_ab - ab_hoy_real)
             l10_ab = max(1, l10_ab)
+            
             hr_index = ((season_hr / season_ab * 0.3) + (l10_hr / l10_ab * 0.7)) * (1.10 if condicion == 'Local' else 1.0)
+            hr_index_rounded = round(hr_index, 4) # Evitar reordenamiento por fluctuaciones de coma flotante
             
             eval_str = "⏳ Pendiente"
             if p['game_status'] in ['Final', 'Game Over']:
@@ -239,10 +244,11 @@ def get_hr_hunters(anio, fecha_hoy):
                 "🔥 HR (L10)": l10_hr,
                 "📊 Turnos (L10)": l10_ab,
                 "📝 Evaluación": eval_str,
-                "score": hr_index
+                "score": hr_index_rounded
             })
             
-        resultados.sort(key=lambda x: x['score'], reverse=True)
+        # Ordenamiento Determinista: Score principal + Nombre para evitar cruces en empates
+        resultados.sort(key=lambda x: (x['score'], x['⚾ Bateador']), reverse=True)
         resultados = resultados[:4]
         
         tabla_final = []
@@ -316,6 +322,9 @@ def get_strikeout_hunters(fecha_hoy):
                 opp_k_pct = opp_ks / opp_pa if opp_pa > 1 else 0.225
                 proj_k = avg_k_per_start * (opp_k_pct / 0.225)
                 
+                # PURGA: Redondeo estricto para evitar reordenamiento por cambios microscópicos en % del rival en vivo
+                proj_k_rounded = round(proj_k, 3) 
+                
                 eval_str = "⏳ Pendiente"
                 if g_status in ['Final', 'Game Over']:
                     eval_str = f"✅ Acierto ({ks_hoy_real} Ks)" if ks_hoy_real >= 6 else f"❌ Fallo ({ks_hoy_real} Ks)"
@@ -328,10 +337,11 @@ def get_strikeout_hunters(fecha_hoy):
                     "📉 K% Rival": f"{opp_k_pct*100:.1f}%",
                     "🎯 Proy. Ponches": int(round(proj_k)), 
                     "📝 Evaluación": eval_str,
-                    "score": proj_k
+                    "score": proj_k_rounded
                 })
                 
-        pitchers_data.sort(key=lambda x: x['score'], reverse=True)
+        # Ordenamiento Determinista
+        pitchers_data.sort(key=lambda x: (x['score'], x['⚾ Abridor']), reverse=True)
         top_4 = pitchers_data[:4]
         for r in top_4:
             r["🎯 Proy. Ponches"] = f"{r['🎯 Proy. Ponches']} Ks" 
@@ -345,7 +355,6 @@ if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
 st.sidebar.markdown("### 🗓️ Motor de Tiempo")
 st.sidebar.markdown("Las fechas cambian estrictamente a las 12:00 AM Hora del Este (ET). Selecciona días pasados para auditar el rendimiento del radar.")
 
-# ¡CORRECCIÓN DE ZONA HORARIA AQUÍ!
 tz_et = 'America/New_York'
 hoy_et = pd.Timestamp.now(tz_et).date()
 
@@ -561,7 +570,7 @@ if st.session_state.df_mlb is not None:
                 else: st.warning("No se detectaron líderes válidos o datos para esta fecha.")
 
     with tab3:
-        st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival (Línea 5.5 ponches)")
+        st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival")
         if st.button("🎯 Cazar Ponches del Día (Top 4)", type="primary", use_container_width=True):
             with st.spinner("Haciendo el cruce de vulnerabilidad y auditando ponches finales..."):
                 resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
