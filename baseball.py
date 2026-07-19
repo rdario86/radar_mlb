@@ -304,7 +304,6 @@ def get_strikeout_hunters(fecha_hoy):
                 if not players: continue
                 p_id = players[0]['id']
                 
-                # DATOS DEL PITCHER (Totalmente congelado pre-hoy)
                 raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
                 stats_blocks = raw_data.get('people', [{}])[0].get('stats', [])
                 
@@ -332,7 +331,6 @@ def get_strikeout_hunters(fecha_hoy):
                 if juegos_lanzados == 0 or l7_outs == 0: continue
                 avg_k_per_start = l7_ks / juegos_lanzados
                 
-                # --- NUEVO: PURGA MATEMÁTICA DEL EQUIPO RIVAL ---
                 team_raw = statsapi.get('teams', {'teamId': opp_id, 'hydrate': 'stats(group=[hitting],type=[season,gameLog])'})
                 opp_ks = 0; opp_pa = 1
                 try:
@@ -350,7 +348,6 @@ def get_strikeout_hunters(fecha_hoy):
                                     ks_equipo_hoy += int(t_game.get('stat', {}).get('strikeOuts', 0))
                                     pa_equipo_hoy += int(t_game.get('stat', {}).get('plateAppearances', 0))
                     
-                    # Restamos la actividad en vivo para congelar el % de K del rival a la noche anterior
                     opp_ks = max(0, opp_ks - ks_equipo_hoy)
                     opp_pa = max(1, opp_pa - pa_equipo_hoy)
                 except: pass
@@ -369,7 +366,6 @@ def get_strikeout_hunters(fecha_hoy):
                     "👕 Equipo": p_team,
                     "⚔️ Rival": opp_name,
                     "🔥 K/9 (L7)": int(round((l7_ks / (l7_outs / 3.0)) * 9.0)),
-                    "📉 K% Rival": f"{opp_k_pct*100:.1f}%",
                     "🎯 Proy. Ponches": int(round(proj_k)), 
                     "📝 Evaluación": eval_str,
                     "score": proj_k_rounded
