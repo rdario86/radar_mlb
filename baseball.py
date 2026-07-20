@@ -670,15 +670,19 @@ if st.session_state.df_mlb is not None:
             prob_radar_dec = prob_radar / 100.0
             ev_pct = (prob_radar_dec * cuota_decimal) - 1
             
+            # Variables redondeadas a enteros
+            prob_implicita_int = int(round(prob_implicita * 100))
+            ev_pct_int = int(round(ev_pct * 100))
+            
             st.markdown("---")
             col1, col2, col3 = st.columns(3)
-            col1.metric("Probabilidad que exige el Casino", f"{prob_implicita*100:.1f}%")
+            col1.metric("Probabilidad que exige el Casino", f"{prob_implicita_int}%")
             
             if ev_pct > 0:
-                col2.metric("Valor Esperado (EV)", f"+{ev_pct*100:.2f}%", "Rentable (+EV)")
-                st.success(f"✅ **¡Apuesta de Valor!** El radar le da **{prob_radar}%** de probabilidad de éxito, y la casa de apuestas te está cobrando como si solo tuviera **{prob_implicita*100:.1f}%**. Tienes ventaja matemática. Si repites esta apuesta 100 veces, ganarás dinero.")
+                col2.metric("Valor Esperado (EV)", f"+{ev_pct_int}%", "Rentable (+EV)")
+                st.success(f"✅ **¡Apuesta de Valor!** El radar le da **{prob_radar}%** de probabilidad de éxito, y la casa de apuestas te está cobrando como si solo tuviera **{prob_implicita_int}%**. Tienes ventaja matemática. Si repites esta apuesta 100 veces, ganarás dinero.")
             else:
-                col2.metric("Valor Esperado (EV)", f"{ev_pct*100:.2f}%", "No Rentable (-EV)", delta_color="inverse")
-                st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita*100:.1f}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")
+                col2.metric("Valor Esperado (EV)", f"{ev_pct_int}%", "No Rentable (-EV)", delta_color="inverse")
+                st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita_int}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")
 else:
     st.info("👈 Presiona 'Descargar Historial Base' en la barra lateral para encender el motor predictivo")
