@@ -449,7 +449,8 @@ if st.session_state.df_mlb is not None:
         df_filtrado['Win'] = (df_filtrado['Carreras_Local'] > df_filtrado['Carreras_Visitante']).astype(int)
         clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df_filtrado[['Elo_L', 'Elo_V']], df_filtrado['Win'])
     
-    tab1, tab2, tab3 = st.tabs(["📅 Cartelera del Día", "💣 Caza-Jonrones", "🔥 Caza-Ponches (K-Props)"])
+    # --- ACTUALIZACIÓN DE PESTAÑAS (Agregada tab 4) ---
+    tab1, tab2, tab3, tab4 = st.tabs(["📅 Cartelera del Día", "💣 Caza-Jonrones", "🔥 Caza-Ponches", "🧮 Calculadora +EV"])
     
     with tab1:
         st.markdown(f"### 🎯 Partidos programados para el: **{st.session_state.fecha_hoy}**")
@@ -588,7 +589,6 @@ if st.session_state.df_mlb is not None:
                         
                         st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
                         
-                        # --- NUEVO: INDICADOR DE EFECTIVIDAD (JUEGOS) ---
                         total_evaluados = sum(1 for e in df_resultados['📝 Evaluación'] if '✅' in e or '❌' in e)
                         aciertos = sum(1 for e in df_resultados['📝 Evaluación'] if '✅' in e)
                         
@@ -614,7 +614,6 @@ if st.session_state.df_mlb is not None:
                     df_hr_estilizado = df_hr.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
                     st.dataframe(df_hr_estilizado, use_container_width=True, hide_index=True)
                     
-                    # --- NUEVO: INDICADOR DE EFECTIVIDAD (JONRONES) ---
                     total_evaluados = sum(1 for e in df_hr['📝 Evaluación'] if '✅' in e or '❌' in e)
                     aciertos = sum(1 for e in df_hr['📝 Evaluación'] if '✅' in e)
                     
@@ -637,7 +636,6 @@ if st.session_state.df_mlb is not None:
                     df_k_estilizado = df_k.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
                     st.dataframe(df_k_estilizado, use_container_width=True, hide_index=True)
                     
-                    # --- NUEVO: INDICADOR DE EFECTIVIDAD (PONCHES) ---
                     total_evaluados = sum(1 for e in df_k['📝 Evaluación'] if '✅' in e or '❌' in e)
                     aciertos = sum(1 for e in df_k['📝 Evaluación'] if '✅' in e)
                     
@@ -649,5 +647,38 @@ if st.session_state.df_mlb is not None:
                         c2.metric("Metas Superadas", aciertos)
                         c3.metric("Efectividad", f"{int(round(efectividad))}%")
                 else: st.warning("No hay suficientes datos de pitcheo para evaluar esta jornada.")
+                
+    # --- NUEVA PESTAÑA 4: CALCULADORA +EV ---
+    with tab4:
+        st.markdown("### 🧮 Calculadora de Valor Esperado (+EV)")
+        st.markdown("Compara la probabilidad matemática del Radar con la cuota de tu casino para descubrir si la apuesta es rentable a largo plazo.")
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            prob_radar = st.number_input("📊 Probabilidad que arrojó el Radar (%)", min_value=1, max_value=99, value=55, step=1)
+        with c2:
+            cuota_casino = st.number_input("🏦 Cuota Americana del Casino (ej. -110, +130)", value=-110, step=10)
+            
+        if cuota_casino != 0:
+            if cuota_casino > 0:
+                prob_implicita = 100 / (cuota_casino + 100)
+                cuota_decimal = (cuota_casino / 100) + 1
+            else:
+                prob_implicita = abs(cuota_casino) / (abs(cuota_casino) + 100)
+                cuota_decimal = (100 / abs(cuota_casino)) + 1
+                
+            prob_radar_dec = prob_radar / 100.0
+            ev_pct = (prob_radar_dec * cuota_decimal) - 1
+            
+            st.markdown("---")
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Probabilidad que exige el Casino", f"{prob_implicita*100:.1f}%")
+            
+            if ev_pct > 0:
+                col2.metric("Valor Esperado (EV)", f"+{ev_pct*100:.2f}%", "Rentable (+EV)")
+                st.success(f"✅ **¡Apuesta de Valor!** El radar le da **{prob_radar}%** de probabilidad de éxito, y la casa de apuestas te está cobrando como si solo tuviera **{prob_implicita*100:.1f}%**. Tienes ventaja matemática. Si repites esta apuesta 100 veces, ganarás dinero.")
+            else:
+                col2.metric("Valor Esperado (EV)", f"{ev_pct*100:.2f}%", "No Rentable (-EV)", delta_color="inverse")
+                st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita*100:.1f}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")
 else:
     st.info("👈 Presiona 'Descargar Historial Base' en la barra lateral para encender el motor predictivo")
