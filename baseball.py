@@ -598,7 +598,7 @@ if st.session_state.df_mlb is not None:
                             col1, col2, col3 = st.columns(3)
                             col1.metric("Pronósticos Finalizados", total_evaluados)
                             col2.metric("Aciertos Confirmados", aciertos)
-                            col3.metric("Efectividad del Radar", f"{efectividad:.1f}%")
+                            col3.metric("Efectividad del Radar", f"{int(round(efectividad))}%")
                         else:
                             st.info("Aún no hay juegos finalizados para calcular la efectividad de la jornada.")
                             
@@ -624,7 +624,7 @@ if st.session_state.df_mlb is not None:
                         c1, c2, c3 = st.columns(3)
                         c1.metric("Bateadores Evaluados", total_evaluados)
                         c2.metric("Jonrones Acertados", aciertos)
-                        c3.metric("Efectividad", f"{efectividad:.1f}%")
+                        c3.metric("Efectividad", f"{int(round(efectividad))}%")
                 else: st.warning("No se detectaron líderes válidos o datos para esta fecha.")
 
     with tab3:
@@ -647,7 +647,7 @@ if st.session_state.df_mlb is not None:
                         c1, c2, c3 = st.columns(3)
                         c1.metric("Lanzadores Evaluados", total_evaluados)
                         c2.metric("Metas Superadas", aciertos)
-                        c3.metric("Efectividad", f"{efectividad:.1f}%")
+                        c3.metric("Efectividad", f"{int(round(efectividad))}%")
                 else: st.warning("No hay suficientes datos de pitcheo para evaluar esta jornada.")
 else:
     st.info("👈 Presiona 'Descargar Historial Base' en la barra lateral para encender el motor predictivo")
