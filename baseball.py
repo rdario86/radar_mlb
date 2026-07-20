@@ -357,16 +357,20 @@ def get_strikeout_hunters(fecha_hoy):
                 
                 proj_k_rounded = round(proj_k, 3) 
                 
+                # --- NUEVA LÓGICA DE AUDITORÍA DINÁMICA ---
+                meta_ks = int(round(proj_k))
+                
                 eval_str = "⏳ Pendiente"
                 if g_status in ['Final', 'Game Over']:
-                    eval_str = f"✅ Acierto ({ks_hoy_real} Ks)" if ks_hoy_real >= 6 else f"❌ Fallo ({ks_hoy_real} Ks)"
+                    # Compara directamente los Ks reales con los Ks proyectados para este lanzador
+                    eval_str = f"✅ Acierto ({ks_hoy_real} Ks)" if ks_hoy_real >= meta_ks else f"❌ Fallo ({ks_hoy_real} Ks)"
                 
                 pitchers_data.append({
                     "⚾ Abridor": p_name,
                     "👕 Equipo": p_team,
                     "⚔️ Rival": opp_name,
                     "🔥 K/9 (L7)": int(round((l7_ks / (l7_outs / 3.0)) * 9.0)),
-                    "🎯 Proy. Ponches": int(round(proj_k)), 
+                    "🎯 Proy. Ponches": meta_ks, 
                     "📝 Evaluación": eval_str,
                     "score": proj_k_rounded
                 })
