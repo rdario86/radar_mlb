@@ -357,12 +357,10 @@ def get_strikeout_hunters(fecha_hoy):
                 
                 proj_k_rounded = round(proj_k, 3) 
                 
-                # --- NUEVA LÓGICA DE AUDITORÍA DINÁMICA ---
                 meta_ks = int(round(proj_k))
                 
                 eval_str = "⏳ Pendiente"
                 if g_status in ['Final', 'Game Over']:
-                    # Compara directamente los Ks reales con los Ks proyectados para este lanzador
                     eval_str = f"✅ Acierto ({ks_hoy_real} Ks)" if ks_hoy_real >= meta_ks else f"❌ Fallo ({ks_hoy_real} Ks)"
                 
                 pitchers_data.append({
@@ -589,6 +587,21 @@ if st.session_state.df_mlb is not None:
                             .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
                         
                         st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
+                        
+                        # --- NUEVO: INDICADOR DE EFECTIVIDAD (JUEGOS) ---
+                        total_evaluados = sum(1 for e in df_resultados['📝 Evaluación'] if '✅' in e or '❌' in e)
+                        aciertos = sum(1 for e in df_resultados['📝 Evaluación'] if '✅' in e)
+                        
+                        if total_evaluados > 0:
+                            efectividad = (aciertos / total_evaluados) * 100
+                            st.markdown("### 📊 Rendimiento de la Cartelera")
+                            col1, col2, col3 = st.columns(3)
+                            col1.metric("Pronósticos Finalizados", total_evaluados)
+                            col2.metric("Aciertos Confirmados", aciertos)
+                            col3.metric("Efectividad del Radar", f"{efectividad:.1f}%")
+                        else:
+                            st.info("Aún no hay juegos finalizados para calcular la efectividad de la jornada.")
+                            
                         st.success("✅ Análisis y Auditoría completada.")
 
     with tab2:
@@ -600,6 +613,18 @@ if st.session_state.df_mlb is not None:
                     df_hr = pd.DataFrame(resultados_hr)
                     df_hr_estilizado = df_hr.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
                     st.dataframe(df_hr_estilizado, use_container_width=True, hide_index=True)
+                    
+                    # --- NUEVO: INDICADOR DE EFECTIVIDAD (JONRONES) ---
+                    total_evaluados = sum(1 for e in df_hr['📝 Evaluación'] if '✅' in e or '❌' in e)
+                    aciertos = sum(1 for e in df_hr['📝 Evaluación'] if '✅' in e)
+                    
+                    if total_evaluados > 0:
+                        efectividad = (aciertos / total_evaluados) * 100
+                        st.markdown("### 📊 Rendimiento Caza-Jonrones")
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("Bateadores Evaluados", total_evaluados)
+                        c2.metric("Jonrones Acertados", aciertos)
+                        c3.metric("Efectividad", f"{efectividad:.1f}%")
                 else: st.warning("No se detectaron líderes válidos o datos para esta fecha.")
 
     with tab3:
@@ -611,6 +636,18 @@ if st.session_state.df_mlb is not None:
                     df_k = pd.DataFrame(resultados_k)
                     df_k_estilizado = df_k.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
                     st.dataframe(df_k_estilizado, use_container_width=True, hide_index=True)
+                    
+                    # --- NUEVO: INDICADOR DE EFECTIVIDAD (PONCHES) ---
+                    total_evaluados = sum(1 for e in df_k['📝 Evaluación'] if '✅' in e or '❌' in e)
+                    aciertos = sum(1 for e in df_k['📝 Evaluación'] if '✅' in e)
+                    
+                    if total_evaluados > 0:
+                        efectividad = (aciertos / total_evaluados) * 100
+                        st.markdown("### 📊 Rendimiento Caza-Ponches")
+                        c1, c2, c3 = st.columns(3)
+                        c1.metric("Lanzadores Evaluados", total_evaluados)
+                        c2.metric("Metas Superadas", aciertos)
+                        c3.metric("Efectividad", f"{efectividad:.1f}%")
                 else: st.warning("No hay suficientes datos de pitcheo para evaluar esta jornada.")
 else:
     st.info("👈 Presiona 'Descargar Historial Base' en la barra lateral para encender el motor predictivo")
