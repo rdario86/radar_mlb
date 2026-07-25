@@ -651,26 +651,24 @@ if st.session_state.df_mlb is not None:
     # --- NUEVA PESTAÑA 4: CALCULADORA +EV ---
     with tab4:
         st.markdown("### 🧮 Calculadora de Valor Esperado (+EV)")
-        st.markdown("Compara la probabilidad matemática del Radar con la cuota de tu casino para descubrir si la apuesta es rentable a largo plazo.")
+        st.markdown("Compara la probabilidad matemática del Radar con la cuota decimal de tu casa de apuestas para descubrir si la jugada es rentable a largo plazo.")
         
         c1, c2 = st.columns(2)
         with c1:
             prob_radar = st.number_input("📊 Probabilidad que arrojó el Radar (%)", min_value=1, max_value=99, value=55, step=1)
         with c2:
-            cuota_casino = st.number_input("🏦 Cuota Americana del Casino (ej. -110, +130)", value=-110, step=10)
+            # ---- CAMBIO: ahora pedimos cuota decimal ----
+            cuota_decimal = st.number_input("🏦 Cuota Decimal (ej. 1.91, 2.50)", min_value=1.01, value=1.91, step=0.01)
             
-        if cuota_casino != 0:
-            if cuota_casino > 0:
-                prob_implicita = 100 / (cuota_casino + 100)
-                cuota_decimal = (cuota_casino / 100) + 1
-            else:
-                prob_implicita = abs(cuota_casino) / (abs(cuota_casino) + 100)
-                cuota_decimal = (100 / abs(cuota_casino)) + 1
-                
+        if cuota_decimal > 1.0:
+            # Probabilidad implícita a partir de la cuota decimal
+            prob_implicita = 1.0 / cuota_decimal
+            
             prob_radar_dec = prob_radar / 100.0
-            ev_pct = (prob_radar_dec * cuota_decimal) - 1
+            # Valor esperado
+            ev_pct = (prob_radar_dec * cuota_decimal) - 1.0
             
-            # Variables redondeadas a enteros
+            # Redondeo a enteros para mostrar
             prob_implicita_int = int(round(prob_implicita * 100))
             ev_pct_int = int(round(ev_pct * 100))
             
