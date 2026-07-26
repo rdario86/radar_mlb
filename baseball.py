@@ -452,7 +452,7 @@ if st.session_state.df_mlb is not None:
     # --- ACTUALIZACIÓN DE PESTAÑAS (Agregada tab 4) ---
     tab1, tab2, tab3, tab4 = st.tabs(["📅 Cartelera del Día", "💣 Caza-Jonrones", "🔥 Caza-Ponches", "🧮 Calculadora +EV"])
     
-        with tab1:
+    with tab1:
         st.markdown(f"### 🎯 Partidos programados para el: **{st.session_state.fecha_hoy}**")
         
         if st.button("⚡ Analizar y Evaluar Cartelera", type="primary", use_container_width=True):
@@ -555,7 +555,7 @@ if st.session_state.df_mlb is not None:
                                     elif r_total == LINEA_TOTALES: eval_str = f"🔄 Push (Total: {r_total})"
                                     else: eval_str = f"❌ Fallo (Total: {r_total})"
                             
-                            # --- NUEVO: guardar todos los detalles internos para la ficha épica ---
+                            # Guardar detalles para la ficha épica
                             detalles = {
                                 "elo_local": round(elo_l, 1),
                                 "elo_visitante": round(elo_v, 1),
@@ -584,7 +584,6 @@ if st.session_state.df_mlb is not None:
                                 "nombre_pitcher_local": p_local if p_local else "TBD",
                                 "nombre_pitcher_visitante": p_visita if p_visita else "TBD"
                             }
-                            # ----------------------------------------------------------------
                                 
                             resultados_jornada.append({
                                 "⏰ Hora (ET)": hora_et,
@@ -597,13 +596,11 @@ if st.session_state.df_mlb is not None:
                                 "📝 Evaluación": eval_str,
                                 "raw_time": game_dt_str or "9999-12-31T23:59:59Z",
                                 "score": score_val,
-                                "detalles": detalles   # <--- Añadimos la mochila de datos
+                                "detalles": detalles
                             })
                             
                         resultados_jornada.sort(key=lambda x: x['raw_time'])
-                        # --- NUEVO: guardar en session_state para el selector ---
                         st.session_state["detalles_jornada"] = resultados_jornada
-                        # --------------------------------------------------------
                         
                         df_resultados = pd.DataFrame(resultados_jornada).drop(columns=['score', 'raw_time', 'detalles'], errors='ignore')
                         
@@ -638,7 +635,7 @@ if st.session_state.df_mlb is not None:
                         else:
                             st.info("Aún no hay juegos finalizados para calcular la efectividad de la jornada.")
                             
-                        # --- NUEVO: SELECTOR DE PARTIDO Y FICHA ÉPICA ---
+                        # --- SELECTOR DE PARTIDO Y FICHA ÉPICA ---
                         if "detalles_jornada" in st.session_state and st.session_state["detalles_jornada"]:
                             st.markdown("---")
                             st.markdown("### 🔎 Explicación de una Predicción (Épica)")
@@ -715,9 +712,8 @@ if st.session_state.df_mlb is not None:
                                     
                                     for r in razones:
                                         st.markdown(f"- {r}")
-                        # ----------------------------------------------------
                             
-                        st.success("✅ Análisis y Auditoría completada.")
+                        st.success("✅ Análisis y Auditoría completada.")              
     with tab2:
         st.markdown("### 💣 Radar de Jonrones: Filtro de Regresión + Localía")
         if st.button("🔍 Escanear Mercado de Jonrones (Top 4 Limpio)", type="primary", use_container_width=True):
