@@ -452,7 +452,7 @@ if st.session_state.df_mlb is not None:
     # --- ACTUALIZACIÓN DE PESTAÑAS (Agregada tab 4) ---
     tab1, tab2, tab3, tab4 = st.tabs(["📅 Cartelera del Día", "💣 Caza-Jonrones", "🔥 Caza-Ponches", "🧮 Calculadora +EV"])
     
-        with tab1:
+    with tab1:
         st.markdown(f"### 🎯 Partidos programados para el: **{st.session_state.fecha_hoy}**")
 
         # Botón para calcular (solo dispara el análisis)
