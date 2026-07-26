@@ -619,21 +619,28 @@ if st.session_state.df_mlb is not None:
             with st.spinner("Evaluando rachas y buscando jonrones reales de la jornada..."):
                 resultados_hr = get_hr_hunters(anio_sel, st.session_state.fecha_hoy)
                 if resultados_hr:
-                    df_hr = pd.DataFrame(resultados_hr)
-                    df_hr_estilizado = df_hr.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
-                    st.dataframe(df_hr_estilizado, use_container_width=True, hide_index=True)
-                    
-                    total_evaluados = sum(1 for e in df_hr['📝 Evaluación'] if '✅' in e or '❌' in e)
-                    aciertos = sum(1 for e in df_hr['📝 Evaluación'] if '✅' in e)
-                    
-                    if total_evaluados > 0:
-                        efectividad = (aciertos / total_evaluados) * 100
-                        st.markdown("### 📊 Rendimiento Caza-Jonrones")
-                        c1, c2, c3 = st.columns(3)
-                        c1.metric("Bateadores Evaluados", total_evaluados)
-                        c2.metric("Jonrones Acertados", aciertos)
-                        c3.metric("Efectividad", f"{int(round(efectividad))}%")
-                else: st.warning("No se detectaron líderes válidos o datos para esta fecha.")
+                    st.session_state.resultados_hr = resultados_hr
+                else:
+                    st.session_state.resultados_hr = None
+                    st.warning("No se detectaron líderes válidos o datos para esta fecha.")
+
+        if "resultados_hr" in st.session_state and st.session_state.resultados_hr is not None:
+            df_hr = pd.DataFrame(st.session_state.resultados_hr)
+            df_hr_estilizado = df_hr.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
+            st.dataframe(df_hr_estilizado, use_container_width=True, hide_index=True)
+
+            total_evaluados = sum(1 for e in df_hr['📝 Evaluación'] if '✅' in e or '❌' in e)
+            aciertos = sum(1 for e in df_hr['📝 Evaluación'] if '✅' in e)
+
+            if total_evaluados > 0:
+                efectividad = (aciertos / total_evaluados) * 100
+                st.markdown("### 📊 Rendimiento Caza-Jonrones")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Bateadores Evaluados", total_evaluados)
+                c2.metric("Jonrones Acertados", aciertos)
+                c3.metric("Efectividad", f"{int(round(efectividad))}%")
+        elif "resultados_hr" not in st.session_state:
+            st.info("Presiona el botón para escanear el mercado de jonrones.")
 
     with tab3:
         st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival")
@@ -641,21 +648,28 @@ if st.session_state.df_mlb is not None:
             with st.spinner("Haciendo el cruce de vulnerabilidad y auditando ponches finales..."):
                 resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
                 if resultados_k:
-                    df_k = pd.DataFrame(resultados_k)
-                    df_k_estilizado = df_k.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
-                    st.dataframe(df_k_estilizado, use_container_width=True, hide_index=True)
-                    
-                    total_evaluados = sum(1 for e in df_k['📝 Evaluación'] if '✅' in e or '❌' in e)
-                    aciertos = sum(1 for e in df_k['📝 Evaluación'] if '✅' in e)
-                    
-                    if total_evaluados > 0:
-                        efectividad = (aciertos / total_evaluados) * 100
-                        st.markdown("### 📊 Rendimiento Caza-Ponches")
-                        c1, c2, c3 = st.columns(3)
-                        c1.metric("Lanzadores Evaluados", total_evaluados)
-                        c2.metric("Metas Superadas", aciertos)
-                        c3.metric("Efectividad", f"{int(round(efectividad))}%")
-                else: st.warning("No hay suficientes datos de pitcheo para evaluar esta jornada.")
+                    st.session_state.resultados_k = resultados_k
+                else:
+                    st.session_state.resultados_k = None
+                    st.warning("No hay suficientes datos de pitcheo para evaluar esta jornada.")
+
+        if "resultados_k" in st.session_state and st.session_state.resultados_k is not None:
+            df_k = pd.DataFrame(st.session_state.resultados_k)
+            df_k_estilizado = df_k.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
+            st.dataframe(df_k_estilizado, use_container_width=True, hide_index=True)
+
+            total_evaluados = sum(1 for e in df_k['📝 Evaluación'] if '✅' in e or '❌' in e)
+            aciertos = sum(1 for e in df_k['📝 Evaluación'] if '✅' in e)
+
+            if total_evaluados > 0:
+                efectividad = (aciertos / total_evaluados) * 100
+                st.markdown("### 📊 Rendimiento Caza-Ponches")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Lanzadores Evaluados", total_evaluados)
+                c2.metric("Metas Superadas", aciertos)
+                c3.metric("Efectividad", f"{int(round(efectividad))}%")
+        elif "resultados_k" not in st.session_state:
+            st.info("Presiona el botón para cazar ponches del día.")
                 
     # --- NUEVA PESTAÑA 4: CALCULADORA +EV ---
     with tab4:
