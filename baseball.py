@@ -649,7 +649,7 @@ if st.session_state.df_mlb is not None:
                 else: st.warning("No hay suficientes datos de pitcheo para evaluar esta jornada.")
                 
     # --- NUEVA PESTAÑA 4: CALCULADORA +EV ---
-        with tab4:
+    with tab4:
         st.markdown("### 🧮 Calculadora de Valor Esperado (+EV)")
         st.markdown("Compara la probabilidad matemática del Radar con la cuota decimal de tu casa de apuestas para descubrir si la jugada es rentable a largo plazo.")
         
@@ -675,7 +675,7 @@ if st.session_state.df_mlb is not None:
             col1, col2, col3 = st.columns(3)
             col1.metric("Probabilidad que exige el Casino", f"{prob_implicita_int}%")
             
-            # ---- INDICADOR VISUAL SEGÚN EV (NUEVO) ----
+            # ---- INDICADOR VISUAL SEGÚN EV ----
             if ev_pct >= 0.10:
                 st.balloons()
                 st.success("💎 Apuesta de alto valor (+10% EV)")
@@ -686,10 +686,10 @@ if st.session_state.df_mlb is not None:
             else:
                 st.error("❌ Apuesta no rentable")
             
-            # Conservamos el texto explicativo original
+            # Texto explicativo
             if ev_pct > 0:
                 col2.metric("Valor Esperado (EV)", f"+{ev_pct_int}%", "Rentable (+EV)")
                 st.success(f"✅ **¡Apuesta de Valor!** El radar le da **{prob_radar}%** de probabilidad de éxito, y la casa de apuestas te está cobrando como si solo tuviera **{prob_implicita_int}%**. Tienes ventaja matemática. Si repites esta apuesta 100 veces, ganarás dinero.")
             else:
                 col2.metric("Valor Esperado (EV)", f"{ev_pct_int}%", "No Rentable (-EV)", delta_color="inverse")
-                st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita_int}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")
+                st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita_int}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")        
