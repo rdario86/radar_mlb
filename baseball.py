@@ -452,7 +452,7 @@ if st.session_state.df_mlb is not None:
     # --- ACTUALIZACIÓN DE PESTAÑAS (Agregada tab 4) ---
     tab1, tab2, tab3, tab4 = st.tabs(["📅 Cartelera del Día", "💣 Caza-Jonrones", "🔥 Caza-Ponches", "🧮 Calculadora +EV"])
     
-    with tab1:
+        with tab1:
         st.markdown(f"### 🎯 Partidos programados para el: **{st.session_state.fecha_hoy}**")
         
         if st.button("⚡ Analizar y Evaluar Cartelera", type="primary", use_container_width=True):
@@ -554,6 +554,37 @@ if st.session_state.df_mlb is not None:
                                     elif "BAJA" in jugada_str and r_total < LINEA_TOTALES: eval_str = f"✅ Acierto (Total: {r_total})"
                                     elif r_total == LINEA_TOTALES: eval_str = f"🔄 Push (Total: {r_total})"
                                     else: eval_str = f"❌ Fallo (Total: {r_total})"
+                            
+                            # --- NUEVO: guardar todos los detalles internos para la ficha épica ---
+                            detalles = {
+                                "elo_local": round(elo_l, 1),
+                                "elo_visitante": round(elo_v, 1),
+                                "racha_local": racha_l,
+                                "racha_visitante": racha_v,
+                                "h2h": h2h,
+                                "luck_local": luck_l,
+                                "luck_visitante": luck_v,
+                                "split_local": split_l,
+                                "split_visitante": split_v,
+                                "whip_local": whip_l,
+                                "whip_visitante": whip_v,
+                                "pitcher_adj": pitcher_adj,
+                                "prob_elo": prob,
+                                "prob_final_local": prob_final_local,
+                                "proyeccion_carreras_local": c_l,
+                                "proyeccion_carreras_visitante": c_v,
+                                "total_runs": total_runs,
+                                "ou_pick": ou_pick,
+                                "pct_final": pct_final,
+                                "pseudo_prob": pseudo_prob,
+                                "ganador": ganador,
+                                "jugada_str": jugada_str,
+                                "raw_time": game_dt_str,
+                                "score": score_val,
+                                "nombre_pitcher_local": p_local if p_local else "TBD",
+                                "nombre_pitcher_visitante": p_visita if p_visita else "TBD"
+                            }
+                            # ----------------------------------------------------------------
                                 
                             resultados_jornada.append({
                                 "⏰ Hora (ET)": hora_et,
@@ -565,11 +596,16 @@ if st.session_state.df_mlb is not None:
                                 "📊 Prob.": prob_str,
                                 "📝 Evaluación": eval_str,
                                 "raw_time": game_dt_str or "9999-12-31T23:59:59Z",
-                                "score": score_val
+                                "score": score_val,
+                                "detalles": detalles   # <--- Añadimos la mochila de datos
                             })
                             
                         resultados_jornada.sort(key=lambda x: x['raw_time'])
-                        df_resultados = pd.DataFrame(resultados_jornada).drop(columns=['score', 'raw_time'], errors='ignore')
+                        # --- NUEVO: guardar en session_state para el selector ---
+                        st.session_state["detalles_jornada"] = resultados_jornada
+                        # --------------------------------------------------------
+                        
+                        df_resultados = pd.DataFrame(resultados_jornada).drop(columns=['score', 'raw_time', 'detalles'], errors='ignore')
                         
                         def color_whip(row):
                             styles = [''] * len(row)
@@ -602,8 +638,86 @@ if st.session_state.df_mlb is not None:
                         else:
                             st.info("Aún no hay juegos finalizados para calcular la efectividad de la jornada.")
                             
+                        # --- NUEVO: SELECTOR DE PARTIDO Y FICHA ÉPICA ---
+                        if "detalles_jornada" in st.session_state and st.session_state["detalles_jornada"]:
+                            st.markdown("---")
+                            st.markdown("### 🔎 Explicación de una Predicción (Épica)")
+                            
+                            opciones = {}
+                            for partido in st.session_state["detalles_jornada"]:
+                                etiqueta = f"{partido['⏰ Hora (ET)']} - {partido['✈️ Visitante'].split(' (')[0]} @ {partido['🏠 Local'].split(' (')[0]} → {partido['🎯 Jugada Recomendada']}"
+                                opciones[etiqueta] = partido
+                            
+                            seleccion = st.selectbox("Selecciona un partido para ver su análisis:", list(opciones.keys()))
+                            
+                            if seleccion:
+                                datos = opciones[seleccion]["detalles"]
+                                eq_local = seleccion.split(" @ ")[1].split(" →")[0]
+                                eq_visitante = seleccion.split(" - ")[1].split(" @ ")[0]
+                                jugada = seleccion.split("→ ")[1]
+                                
+                                with st.container():
+                                    st.markdown(f"#### 📋 Análisis del partido: {eq_visitante} @ {eq_local}")
+                                    
+                                    col1, col2, col3 = st.columns(3)
+                                    col1.metric("Elo Local", datos["elo_local"])
+                                    col2.metric("Elo Visitante", datos["elo_visitante"])
+                                    col3.metric("Ventaja Local (Elo)", f"{datos['elo_local'] - datos['elo_visitante']:.1f}")
+                                    
+                                    st.markdown("**📈 Factores de forma**")
+                                    c1, c2, c3 = st.columns(3)
+                                    c1.metric("Racha Local (L10)", f"{datos['racha_local']:.0%}")
+                                    c2.metric("Racha Visitante (L10)", f"{datos['racha_visitante']:.0%}")
+                                    c3.metric("Head‑to‑Head (L5)", f"{datos['h2h']:.0%} a favor de {eq_local}")
+                                    
+                                    st.markdown("**⚾ Pitchers abridores**")
+                                    c1, c2 = st.columns(2)
+                                    c1.metric(f"WHIP {datos['nombre_pitcher_local']}", f"{datos['whip_local']:.2f}")
+                                    c2.metric(f"WHIP {datos['nombre_pitcher_visitante']}", f"{datos['whip_visitante']:.2f}")
+                                    c1.caption(f"Ajuste por pitcheo: {datos['pitcher_adj']:.3f}")
+                                    
+                                    st.markdown("**🏟️ Splits y suerte**")
+                                    c1, c2, c3 = st.columns(3)
+                                    c1.metric("Split Local (casa)", f"{datos['split_local']:.0%}")
+                                    c2.metric("Split Visitante (fuera)", f"{datos['split_visitante']:.0%}")
+                                    c3.metric("Suerte Pitagórica Local", f"{datos['luck_local']:+.2f}")
+                                    
+                                    st.markdown("**🧠 Probabilidades**")
+                                    st.write(f"- Probabilidad base del modelo (Elo): {datos['prob_elo']:.1%}")
+                                    st.write(f"- Probabilidad final ajustada: {datos['prob_final_local']:.1%} a favor de {eq_local}")
+                                    st.write(f"- Confianza de la recomendación: {datos['pct_final']}%")
+                                    
+                                    st.markdown("**📊 Proyección de carreras**")
+                                    st.write(f"- {eq_visitante}: {datos['proyeccion_carreras_visitante']:.2f} | {eq_local}: {datos['proyeccion_carreras_local']:.2f}")
+                                    st.write(f"- Total proyectado: {datos['total_runs']:.2f} (Línea de referencia: {LINEA_TOTALES})")
+                                    
+                                    st.markdown("---")
+                                    st.markdown("**💡 ¿Por qué esta recomendación?**")
+                                    
+                                    razones = []
+                                    if "A Ganar" in jugada:
+                                        razones.append(f"El modelo da como ganador a **{datos['ganador']}** con una probabilidad ajustada del **{datos['pct_final']}%**.")
+                                        if datos["racha_local"] > 0.6:
+                                            razones.append(f"{eq_local} llega en gran forma (racha de {datos['racha_local']:.0%} en últimos 10).")
+                                        if datos["whip_local"] < 1.20:
+                                            razones.append(f"El abridor local tiene un WHIP dominante ({datos['whip_local']:.2f}), lo que reduce las carreras esperadas del rival.")
+                                        if datos["split_local"] > 0.55:
+                                            razones.append(f"{eq_local} gana el {datos['split_local']:.0%} de sus partidos en casa.")
+                                        if datos["pitcher_adj"] > 0.02:
+                                            razones.append("El ajuste por pitcheo beneficia claramente al equipo local.")
+                                    else:
+                                        if "ALTA" in jugada:
+                                            razones.append(f"La proyección total de carreras es de **{datos['total_runs']:.1f}**, por encima de la línea de {LINEA_TOTALES}.")
+                                        else:
+                                            razones.append(f"La proyección total es de **{datos['total_runs']:.1f}**, por debajo de la línea de {LINEA_TOTALES}.")
+                                        if datos["whip_local"] > 1.40 or datos["whip_visitante"] > 1.40:
+                                            razones.append("Al menos un abridor tiene WHIP elevado, lo que favorece un juego de muchas carreras." if "ALTA" in jugada else "Ambos abridores tienen WHIP controlado, sugiriendo un duelo de pocas carreras.")
+                                    
+                                    for r in razones:
+                                        st.markdown(f"- {r}")
+                        # ----------------------------------------------------
+                            
                         st.success("✅ Análisis y Auditoría completada.")
-
     with tab2:
         st.markdown("### 💣 Radar de Jonrones: Filtro de Regresión + Localía")
         if st.button("🔍 Escanear Mercado de Jonrones (Top 4 Limpio)", type="primary", use_container_width=True):
