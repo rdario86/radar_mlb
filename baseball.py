@@ -454,35 +454,38 @@ if st.session_state.df_mlb is not None:
     
     with tab1:
         st.markdown(f"### 🎯 Partidos programados para el: **{st.session_state.fecha_hoy}**")
-        
+
+        # Botón para generar/actualizar predicciones (siempre visible)
         if st.button("⚡ Analizar y Evaluar Cartelera", type="primary", use_container_width=True):
             if len(df_filtrado) == 0:
                 st.error("No hay suficientes datos históricos previos a esta fecha para entrenar el modelo.")
+                st.session_state.resultados_jornada = None
             else:
                 with st.spinner("Escaneando predicciones ciegas y verificando con resultados reales..."):
                     juegos_hoy = statsapi.schedule(date=st.session_state.fecha_hoy, sportId=1)
-                    
+
                     if not juegos_hoy:
                         st.warning("No hay juegos programados para esta fecha.")
+                        st.session_state.resultados_jornada = None
                     else:
                         resultados_jornada = []
-                        equipos_procesados = set() 
-                        
+                        equipos_procesados = set()
+
                         for juego in juegos_hoy:
                             estado_juego = juego.get('status', '')
                             estados_validos = ['Scheduled', 'Pre-Game', 'Warmup', 'Delayed Start', 'In Progress', 'Final', 'Game Over']
                             if estado_juego not in estados_validos: continue
-                                
+
                             e_local = juego['home_name']
                             e_visita = juego['away_name']
                             p_local, p_visita = get_starting_pitchers(juego)
-                            
+
                             if e_local not in MLB_TEAM_WHITELIST or e_visita not in MLB_TEAM_WHITELIST: continue
                             if e_local in equipos_procesados or e_visita in equipos_procesados: continue
-                            
+
                             equipos_procesados.add(e_local)
                             equipos_procesados.add(e_visita)
-                                
+
                             game_dt_str = juego.get('game_datetime', '')
                             if game_dt_str:
                                 try:
@@ -491,44 +494,44 @@ if st.session_state.df_mlb is not None:
                                     hora_et = dt.tz_convert('America/New_York').strftime('%I:%M %p')
                                 except: hora_et = 'TBD'
                             else: hora_et = 'TBD'
-                                
+
                             rec_l = get_team_record(e_local, df_filtrado)
                             rec_v = get_team_record(e_visita, df_filtrado)
-                            
+
                             elo_l = df_filtrado[df_filtrado['Local'] == e_local].tail(1)['Elo_L'].values[0] if len(df_filtrado[df_filtrado['Local'] == e_local]) > 0 else 1500
                             elo_v = df_filtrado[df_filtrado['Visitante'] == e_visita].tail(1)['Elo_V'].values[0] if len(df_filtrado[df_filtrado['Visitante'] == e_visita]) > 0 else 1500
-                            elo_l += 35 
-                            
+                            elo_l += 35
+
                             racha_l = get_recent_form(e_local, df_filtrado)
                             racha_v = get_recent_form(e_visita, df_filtrado)
                             h2h = get_h2h_wins(e_local, e_visita, df_filtrado)
                             luck_l = get_pythagorean_luck(e_local, df_filtrado)
                             luck_v = get_pythagorean_luck(e_visita, df_filtrado)
                             split_l, split_v = get_splits_win_pct(e_local, e_visita, df_filtrado)
-                            
+
                             whip_l = get_pitcher_whip(p_local, st.session_state.fecha_hoy)
                             whip_v = get_pitcher_whip(p_visita, st.session_state.fecha_hoy)
-                            
+
                             prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
-                            pitcher_adj = (whip_v - whip_l) * 0.15 
-                            
-                            prob_final_local = (prob + (racha_l - racha_v)*PESO_RACHA + (h2h - 0.5)*PESO_H2H + 
+                            pitcher_adj = (whip_v - whip_l) * 0.15
+
+                            prob_final_local = (prob + (racha_l - racha_v)*PESO_RACHA + (h2h - 0.5)*PESO_H2H +
                                                 (luck_l - luck_v)*PESO_PITAGORICO + (split_l - split_v)*PESO_SPLITS + pitcher_adj)
-                            
+
                             ganador = e_local if prob_final_local > 0.5 else e_visita
                             pct_bruto = prob_final_local if prob_final_local > 0.5 else 1.0 - prob_final_local
                             pct_final = int(round(max(min(pct_bruto, 0.99), 0.01) * 100))
-                            
+
                             c_v, c_l = get_hybrid_run_projection(e_visita, e_local, df_filtrado)
                             c_l = max(0.5, c_l + (whip_v - 1.30)*1.5)
                             c_v = max(0.5, c_v + (whip_l - 1.30)*1.5)
                             total_runs = round(c_v + c_l, 2)
-                            
+
                             ou_pick = "ALTA" if total_runs > LINEA_TOTALES else "BAJA"
                             total_runs_int = int(round(total_runs))
                             diff_total = abs(total_runs - LINEA_TOTALES)
                             pseudo_prob = int(round(50 + (diff_total * 10)))
-                            
+
                             if pct_final >= pseudo_prob:
                                 jugada_str = f"{ganador} (A Ganar)"
                                 prob_str = f"{pct_final}%"
@@ -537,16 +540,16 @@ if st.session_state.df_mlb is not None:
                                 jugada_str = f"{ou_pick} de {LINEA_TOTALES} (Proy: {total_runs_int})"
                                 prob_str = f"{min(99, pseudo_prob)}%"
                                 score_val = pseudo_prob
-                                
+
                             eval_str = "⏳ Pendiente"
                             if estado_juego in ['Final', 'Game Over']:
                                 r_local = juego.get('home_score', 0)
                                 r_visita = juego.get('away_score', 0)
                                 r_ganador = e_local if r_local > r_visita else e_visita
                                 r_total = r_local + r_visita
-                                
+
                                 marcador_str = f"({r_local}-{r_visita})"
-                                
+
                                 if "A Ganar" in jugada_str:
                                     eval_str = f"✅ Acierto {marcador_str}" if r_ganador in jugada_str else f"❌ Fallo {marcador_str}"
                                 else:
@@ -554,55 +557,61 @@ if st.session_state.df_mlb is not None:
                                     elif "BAJA" in jugada_str and r_total < LINEA_TOTALES: eval_str = f"✅ Acierto (Total: {r_total})"
                                     elif r_total == LINEA_TOTALES: eval_str = f"🔄 Push (Total: {r_total})"
                                     else: eval_str = f"❌ Fallo (Total: {r_total})"
-                                
+
                             resultados_jornada.append({
                                 "⏰ Hora (ET)": hora_et,
                                 "✈️ Visitante": f"{e_visita} ({rec_v})",
                                 "🏠 Local": f"{e_local} ({rec_l})",
-                                "⚾ Abridor (V)": f"{p_visita or 'TBD'} ({whip_v:.2f})", 
-                                "⚾ Abridor (L)": f"{p_local or 'TBD'} ({whip_l:.2f})", 
+                                "⚾ Abridor (V)": f"{p_visita or 'TBD'} ({whip_v:.2f})",
+                                "⚾ Abridor (L)": f"{p_local or 'TBD'} ({whip_l:.2f})",
                                 "🎯 Jugada Recomendada": jugada_str,
                                 "📊 Prob.": prob_str,
                                 "📝 Evaluación": eval_str,
                                 "raw_time": game_dt_str or "9999-12-31T23:59:59Z",
                                 "score": score_val
                             })
-                            
+
                         resultados_jornada.sort(key=lambda x: x['raw_time'])
-                        df_resultados = pd.DataFrame(resultados_jornada).drop(columns=['score', 'raw_time'], errors='ignore')
-                        
-                        def color_whip(row):
-                            styles = [''] * len(row)
-                            for j, col in enumerate(row.index):
-                                if col in ['⚾ Abridor (V)', '⚾ Abridor (L)']:
-                                    try:
-                                        whip = float(str(row[col]).split('(')[-1].replace(')', ''))
-                                        if whip < 1.00: styles[j] = 'color: #00cc66; font-weight: bold;' 
-                                        elif whip <= 1.30: styles[j] = 'color: #ff9900; font-weight: bold;' 
-                                        else: styles[j] = 'color: #ff4d4d; font-weight: bold;' 
-                                    except: pass
-                            return styles
-                        
-                        df_estilizado = df_resultados.style.apply(color_whip, axis=1)\
-                            .set_properties(**{'text-align': 'center'})\
-                            .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
-                        
-                        st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
-                        
-                        total_evaluados = sum(1 for e in df_resultados['📝 Evaluación'] if '✅' in e or '❌' in e)
-                        aciertos = sum(1 for e in df_resultados['📝 Evaluación'] if '✅' in e)
-                        
-                        if total_evaluados > 0:
-                            efectividad = (aciertos / total_evaluados) * 100
-                            st.markdown("### 📊 Rendimiento de la Cartelera")
-                            col1, col2, col3 = st.columns(3)
-                            col1.metric("Pronósticos Finalizados", total_evaluados)
-                            col2.metric("Aciertos Confirmados", aciertos)
-                            col3.metric("Efectividad del Radar", f"{int(round(efectividad))}%")
-                        else:
-                            st.info("Aún no hay juegos finalizados para calcular la efectividad de la jornada.")
-                            
-                        st.success("✅ Análisis y Auditoría completada.")
+                        st.session_state.resultados_jornada = resultados_jornada
+                        st.success("✅ Análisis completado. Resultados guardados.")
+
+        # --- Mostrar resultados almacenados (persiste al cambiar de pestaña) ---
+        if "resultados_jornada" in st.session_state and st.session_state.resultados_jornada is not None:
+            resultados_jornada = st.session_state.resultados_jornada
+            df_resultados = pd.DataFrame(resultados_jornada).drop(columns=['score', 'raw_time'], errors='ignore')
+
+            def color_whip(row):
+                styles = [''] * len(row)
+                for j, col in enumerate(row.index):
+                    if col in ['⚾ Abridor (V)', '⚾ Abridor (L)']:
+                        try:
+                            whip = float(str(row[col]).split('(')[-1].replace(')', ''))
+                            if whip < 1.00: styles[j] = 'color: #00cc66; font-weight: bold;'
+                            elif whip <= 1.30: styles[j] = 'color: #ff9900; font-weight: bold;'
+                            else: styles[j] = 'color: #ff4d4d; font-weight: bold;'
+                        except: pass
+                return styles
+
+            df_estilizado = df_resultados.style.apply(color_whip, axis=1)\
+                .set_properties(**{'text-align': 'center'})\
+                .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
+
+            st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
+
+            total_evaluados = sum(1 for e in df_resultados['📝 Evaluación'] if '✅' in e or '❌' in e)
+            aciertos = sum(1 for e in df_resultados['📝 Evaluación'] if '✅' in e)
+
+            if total_evaluados > 0:
+                efectividad = (aciertos / total_evaluados) * 100
+                st.markdown("### 📊 Rendimiento de la Cartelera")
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Pronósticos Finalizados", total_evaluados)
+                col2.metric("Aciertos Confirmados", aciertos)
+                col3.metric("Efectividad del Radar", f"{int(round(efectividad))}%")
+            else:
+                st.info("Aún no hay juegos finalizados para calcular la efectividad de la jornada.")
+        else:
+            st.info("Presiona el botón 'Analizar y Evaluar Cartelera' para generar las predicciones del día.")
 
     with tab2:
         st.markdown("### 💣 Radar de Jonrones: Filtro de Regresión + Localía")
