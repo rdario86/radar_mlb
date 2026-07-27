@@ -6,6 +6,7 @@ import time
 import datetime
 import calendar
 from sklearn.ensemble import RandomForestClassifier
+from scipy.stats import poisson
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
@@ -248,7 +249,11 @@ def get_hr_hunters(anio, fecha_hoy):
             l10_ab = max(1, l10_ab)
             
             hr_index = ((season_hr / season_ab * 0.3) + (l10_hr / l10_ab * 0.7)) * (1.10 if condicion == 'Local' else 1.0)
-            hr_index_rounded = round(hr_index, 4) 
+            hr_index_rounded = round(hr_index, 4)
+
+            # Nuevo: probabilidad de al menos 1 HR en el partido (4 turnos)
+            prob_hr_game = 1 - (1 - hr_index) ** 4
+            prob_hr_pct = int(round(prob_hr_game * 100))
             
             eval_str = "⏳ Pendiente"
             if p['game_status'] in ['Final', 'Game Over']:
@@ -262,7 +267,8 @@ def get_hr_hunters(anio, fecha_hoy):
                 "🔥 HR (L10)": l10_hr,
                 "📊 Turnos (L10)": l10_ab,
                 "📝 Evaluación": eval_str,
-                "score": hr_index_rounded
+                "score": hr_index_rounded,
+                "prob_hr_game": prob_hr_pct   # guardamos la probabilidad
             })
             
         resultados.sort(key=lambda x: (x['score'], x['⚾ Bateador']), reverse=True)
@@ -277,6 +283,7 @@ def get_hr_hunters(anio, fecha_hoy):
                 "🏆 HR Año": r["🏆 HR Año"],
                 "🔥 HR (L10)": r["🔥 HR (L10)"],
                 "📈 Ratio de Poder (L10)": f"{r['🔥 HR (L10)']} HR / {r['📊 Turnos (L10)']} VB",
+                "🎯 Prob. HR (Partido)": f"{r['prob_hr_game']}%",   # columna nueva
                 "📝 Evaluación": r["📝 Evaluación"]
             })
         return tabla_final
@@ -356,8 +363,14 @@ def get_strikeout_hunters(fecha_hoy):
                 proj_k = avg_k_per_start * (opp_k_pct / 0.225)
                 
                 proj_k_rounded = round(proj_k, 3) 
-                
                 meta_ks = int(round(proj_k))
+                
+                # Nuevo: probabilidad de alcanzar o superar la proyección (Poisson)
+                if proj_k > 0:
+                    prob_meta = 1 - poisson.cdf(meta_ks - 1, proj_k)
+                else:
+                    prob_meta = 0.0
+                prob_meta_pct = int(round(prob_meta * 100))
                 
                 eval_str = "⏳ Pendiente"
                 if g_status in ['Final', 'Game Over']:
@@ -370,14 +383,16 @@ def get_strikeout_hunters(fecha_hoy):
                     "🔥 K/9 (L7)": int(round((l7_ks / (l7_outs / 3.0)) * 9.0)),
                     "🎯 Proy. Ponches": meta_ks, 
                     "📝 Evaluación": eval_str,
-                    "score": proj_k_rounded
+                    "score": proj_k_rounded,
+                    "prob_meta": prob_meta_pct   # guardamos la probabilidad
                 })
                 
         pitchers_data.sort(key=lambda x: (x['score'], x['⚾ Abridor']), reverse=True)
         top_4 = pitchers_data[:4]
         for r in top_4:
-            r["🎯 Proy. Ponches"] = f"{r['🎯 Proy. Ponches']} Ks" 
-            del r['score']
+            r["🎯 Proy. Ponches"] = f"{r['🎯 Proy. Ponches']} Ks"
+            r["🎲 Prob. Alcanzar Proy."] = f"{r['prob_meta']}%"   # añadimos columna
+            del r['score'], r['prob_meta']
         return top_4
     except Exception: return []
 
