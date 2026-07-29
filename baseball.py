@@ -667,19 +667,47 @@ if st.session_state.df_mlb is not None:
                             c_v = max(0.5, c_v + (whip_l - 1.30)*1.5)
                             total_runs = round(c_v + c_l, 2)
 
-                            ou_pick = "ALTA" if total_runs > LINEA_TOTALES else "BAJA"
-                            total_runs_int = int(round(total_runs))
-                            diff_total = abs(total_runs - LINEA_TOTALES)
-                            pseudo_prob = int(round(50 + (diff_total * 10)))
-
-                            if pct_final >= pseudo_prob:
-                                jugada_str = f"{ganador} (A Ganar)"
-                                prob_str = f"{pct_final}%"
-                                score_val = pct_final
+                            # --- Probabilidad real de Over/Under con Poisson ---
+                            if total_runs > LINEA_TOTALES:
+                                ou_pick = "ALTA"
+                                prob_total = 1 - poisson.cdf(8, total_runs)   # P(X >= 9)
                             else:
-                                jugada_str = f"{ou_pick} de {LINEA_TOTALES} (Proy: {total_runs_int})"
-                                prob_str = f"{min(99, pseudo_prob)}%"
-                                score_val = pseudo_prob
+                                ou_pick = "BAJA"
+                                prob_total = poisson.cdf(8, total_runs)       # P(X <= 8)
+                            
+                            confianza_total = int(round(prob_total * 100))
+                            total_runs_int = int(round(total_runs))
+
+                            total_runs = round(c_v + c_l, 2)
+
+                            # --- Probabilidad real de Over/Under con Poisson ---
+                            if total_runs > LINEA_TOTALES:
+                                ou_pick = "ALTA"
+                                prob_total = 1 - poisson.cdf(8, total_runs)   # P(X >= 9)
+                            else:
+                                ou_pick = "BAJA"
+                                prob_total = poisson.cdf(8, total_runs)       # P(X <= 8)
+                            
+                            confianza_total = int(round(prob_total * 100))
+                            total_runs_int = int(round(total_runs))
+
+                            # --- Preparar las dos opciones de jugada ---
+                            # 1. Ganador del partido
+                            jugada_str_gan = f"{ganador} (A Ganar)"
+                            prob_str_gan = f"{pct_final}%"
+                            score_gan = pct_final
+
+                            # 2. Total de carreras
+                            jugada_str_tot = f"{ou_pick} de {LINEA_TOTALES} (Proy: {total_runs_int})"
+                            prob_str_tot = f"{confianza_total}%"
+                            score_tot = confianza_total
+
+                            # Elegir la de mayor confianza
+                            opciones = [
+                                ("G", score_gan, jugada_str_gan, prob_str_gan, score_gan),
+                                ("T", score_tot, jugada_str_tot, prob_str_tot, score_tot)
+                            ]
+                            tipo, _, jugada_str, prob_str, score_val = max(opciones, key=lambda x: x[1])
 
                             eval_str = "⏳ Pendiente"
                             if estado_juego in ['Final', 'Game Over']:
