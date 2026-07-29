@@ -7,6 +7,7 @@ import datetime
 import calendar
 from sklearn.ensemble import RandomForestClassifier
 from scipy.stats import poisson
+from scipy.stats import binom
 
 # --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
@@ -289,6 +290,104 @@ def get_hr_hunters(anio, fecha_hoy):
         return tabla_final
     except Exception: return []
 
+def get_hit_hunters(anio, fecha_hoy):
+    """Devuelve los 4 bateadores con mayor probabilidad de dar 2+ hits hoy, con evaluación."""
+    try:
+        juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
+        equipos_hoy = {}
+        for juego in juegos_hoy:
+            if juego.get('status', '') not in ['Postponed', 'Cancelled']:
+                equipos_hoy[juego.get('home_id')] = {'condicion': 'Local', 'status': juego.get('status')}
+                equipos_hoy[juego.get('away_id')] = {'condicion': 'Visitante', 'status': juego.get('status')}
+
+        data = statsapi.get('stats_leaders', {'leaderCategories': 'battingAverage', 'season': anio, 'limit': 80, 'statGroup': 'hitting'})
+        if not data or 'leagueLeaders' not in data or len(data['leagueLeaders']) == 0:
+            return []
+
+        leaders = data['leagueLeaders'][0].get('leaders', [])
+        jugadores_activos = []
+        for p in leaders:
+            team_id = p.get('team', {}).get('id')
+            if team_id in equipos_hoy:
+                p['condicion_hoy'] = equipos_hoy[team_id]['condicion']
+                p['team_name'] = p.get('team', {}).get('name', 'Unknown')
+                p['game_status'] = equipos_hoy[team_id]['status']
+                jugadores_activos.append(p)
+
+        resultados = []
+        ayer_dt = datetime.datetime.strptime(fecha_hoy, '%Y-%m-%d') - datetime.timedelta(days=1)
+        fecha_ayer_str = ayer_dt.strftime('%Y-%m-%d')
+
+        for p in jugadores_activos:
+            p_id = p.get('person', {}).get('id')
+            p_name = p.get('person', {}).get('fullName')
+            team_name = p.get('team_name', 'Unknown')
+            condicion = p.get('condicion_hoy', 'Visitante')
+            game_status = p.get('game_status', '')
+
+            raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'stats(group=[hitting],type=[season,gameLog])'})
+            person = raw_data.get('people', [{}])[0]
+            stats_blocks = person.get('stats', [])
+
+            season_ab = 1; season_hits = 0
+            l10_hits = 0; l10_ab = 0
+            hits_hoy_real = 0; ab_hoy_real = 0
+            dio_2hits_ayer = False
+
+            for block in stats_blocks:
+                if block.get('type', {}).get('displayName') == 'season':
+                    season_ab = int(block.get('splits', [{}])[0].get('stat', {}).get('atBats', 1))
+                    season_hits = int(block.get('splits', [{}])[0].get('stat', {}).get('hits', 0))
+                elif block.get('type', {}).get('displayName') == 'gameLog':
+                    splits = block.get('splits', [])
+                    valid_splits = [s for s in splits if s.get('date', '') < fecha_hoy]
+                    valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
+
+                    for game in valid_splits[:10]:
+                        g_stats = game.get('stat', {})
+                        if game.get('date', '') == fecha_ayer_str and int(g_stats.get('hits', 0)) >= 2:
+                            dio_2hits_ayer = True
+                        l10_hits += int(g_stats.get('hits', 0))
+                        l10_ab += int(g_stats.get('atBats', 0))
+
+                    for game in splits:
+                        if game.get('date') == fecha_hoy:
+                            hits_hoy_real += int(game.get('stat', {}).get('hits', 0))
+                            ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
+
+            if dio_2hits_ayer: continue   # <--- Filtro anti‑racha
+
+            season_hits = max(0, season_hits - hits_hoy_real)
+            season_ab = max(1, season_ab - ab_hoy_real)
+            l10_ab = max(1, l10_ab)
+
+            avg_index = (season_hits / season_ab * 0.3) + (l10_hits / l10_ab * 0.7)
+            prob_2plus = 1 - binom.cdf(1, 4, avg_index)
+            prob_2plus_pct = int(round(prob_2plus * 100))
+
+            eval_str = "⏳ Pendiente"
+            if game_status in ['Final', 'Game Over']:
+                eval_str = "✅ Acierto" if hits_hoy_real >= 2 else "❌ Fallo"
+
+            resultados.append({
+                "⚾ Bateador": p_name,
+                "👕 Equipo": team_name,
+                "🏟️ Condición": condicion,
+                "📊 AVG Temp.": round(season_hits / season_ab, 3) if season_ab > 0 else 0,
+                "🔥 AVG L10": round(l10_hits / l10_ab, 3) if l10_ab > 0 else 0,
+                "🎯 Prob. 2+ Hits": f"{prob_2plus_pct}%",
+                "📝 Evaluación": eval_str,
+                "score": prob_2plus
+            })
+
+        resultados.sort(key=lambda x: x['score'], reverse=True)
+        top4 = resultados[:4]
+        for r in top4:
+            del r['score']
+        return top4
+    except Exception:
+        return []
+
 def get_strikeout_hunters(fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
@@ -465,7 +564,13 @@ if st.session_state.df_mlb is not None:
         clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df_filtrado[['Elo_L', 'Elo_V']], df_filtrado['Win'])
     
     # --- ACTUALIZACIÓN DE PESTAÑAS (Agregada tab 4) ---
-    tab1, tab2, tab3, tab4 = st.tabs(["📅 Cartelera del Día", "💣 Caza-Jonrones", "🔥 Caza-Ponches", "🧮 Calculadora +EV"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📅 Cartelera del Día",
+    "💣 Caza-Jonrones",
+    "🔥 Caza-Ponches",
+    "🧮 Calculadora +EV",
+    "🔹 Caza-Hits (2+ Hits)"
+])
     
     with tab1:
         st.markdown(f"### 🎯 Partidos programados para el: **{st.session_state.fecha_hoy}**")
@@ -730,4 +835,33 @@ if st.session_state.df_mlb is not None:
                 st.success(f"✅ **¡Apuesta de Valor!** El radar le da **{prob_radar}%** de probabilidad de éxito, y la casa de apuestas te está cobrando como si solo tuviera **{prob_implicita_int}%**. Tienes ventaja matemática. Si repites esta apuesta 100 veces, ganarás dinero.")
             else:
                 col2.metric("Valor Esperado (EV)", f"{ev_pct_int}%", "No Rentable (-EV)", delta_color="inverse")
-                st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita_int}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")        
+                st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita_int}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")
+
+    with tab5:
+        st.markdown("### 🔹 Radar de Hits: Probabilidad de 2+ Imparables")
+        if st.button("🔎 Buscar Bateadores con 2+ Hits (Top 4)", type="primary", use_container_width=True):
+            with st.spinner("Calculando probabilidades de multi-hit..."):
+                resultados_hits = get_hit_hunters(anio_sel, st.session_state.fecha_hoy)
+                if resultados_hits:
+                    st.session_state.resultados_hits = resultados_hits
+                else:
+                    st.session_state.resultados_hits = None
+                    st.warning("No se encontraron bateadores con datos suficientes para hoy.")
+
+        if "resultados_hits" in st.session_state and st.session_state.resultados_hits is not None:
+            df_hits = pd.DataFrame(st.session_state.resultados_hits)
+            df_hits_estilizado = df_hits.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
+            st.dataframe(df_hits_estilizado, use_container_width=True, hide_index=True)
+
+            total_evaluados = sum(1 for e in df_hits['📝 Evaluación'] if '✅' in e or '❌' in e)
+            aciertos = sum(1 for e in df_hits['📝 Evaluación'] if '✅' in e)
+
+            if total_evaluados > 0:
+                efectividad = (aciertos / total_evaluados) * 100
+                st.markdown("### 📊 Rendimiento Caza-Hits (2+ Imparables)")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Bateadores Evaluados", total_evaluados)
+                c2.metric("Aciertos (2+ Hits)", aciertos)
+                c3.metric("Efectividad", f"{int(round(efectividad))}%")
+        elif "resultados_hits" not in st.session_state:
+            st.info("Presiona el botón para buscar bateadores con alta probabilidad de 2+ hits.")
