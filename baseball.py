@@ -373,8 +373,8 @@ def get_hit_hunters(anio, fecha_hoy):
                 "⚾ Bateador": p_name,
                 "👕 Equipo": team_name,
                 "🏟️ Condición": condicion,
-                "📊 AVG Temp.": round(season_hits / season_ab, 3) if season_ab > 0 else 0,
-                "🔥 AVG L10": round(l10_hits / l10_ab, 3) if l10_ab > 0 else 0,
+                "📊 AVG Temp.": f"{season_hits / season_ab:.3f}" if season_ab > 0 else ".000",
+                "🔥 AVG L10": f"{l10_hits / l10_ab:.3f}" if l10_ab > 0 else ".000",
                 "🎯 Prob. 2+ Hits": f"{prob_2plus_pct}%",
                 "📝 Evaluación": eval_str,
                 "score": prob_2plus
