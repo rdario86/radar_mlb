@@ -123,22 +123,50 @@ def get_hybrid_run_projection(away_team, home_team, df):
 def get_starting_pitchers(juego):
     hp = juego.get('home_probable_pitcher', '')
     ap = juego.get('away_probable_pitcher', '')
-    
+
+    # Si ya tenemos los nombres, los devolvemos
+    if hp and hp != 'TBD' and ap and ap != 'TBD':
+        return hp, ap
+
+    # Fallback 1: intentar con boxscore (solo sirve si el juego ya empezó)
+    try:
+        game_id = juego.get('game_id')
+        if game_id:
+            box = statsapi.boxscore_data(game_id)
+            if not hp or hp == 'TBD':
+                hp_list = box.get('home', {}).get('pitchers', [])
+                if hp_list:
+                    hp = box.get('playerInfo', {}).get(f"ID{hp_list[0]}", {}).get('fullName', hp)
+            if not ap or ap == 'TBD':
+                ap_list = box.get('away', {}).get('pitchers', [])
+                if ap_list:
+                    ap = box.get('playerInfo', {}).get(f"ID{ap_list[0]}", {}).get('fullName', ap)
+    except:
+        pass
+
+    # Fallback 2 (NUEVO): buscar en los datos completos del partido
     if (not hp or hp == 'TBD' or not ap or ap == 'TBD'):
         try:
             game_id = juego.get('game_id')
             if game_id:
-                box = statsapi.boxscore_data(game_id)
+                game_data = statsapi.get('game', {'gamePk': game_id})
+                probable_pitchers = game_data.get('gameData', {}).get('probablePitchers', {})
                 if not hp or hp == 'TBD':
-                    hp_list = box.get('home', {}).get('pitchers', [])
-                    if hp_list:
-                        hp = box.get('playerInfo', {}).get(f"ID{hp_list[0]}", {}).get('fullName', 'TBD')
+                    home_id = juego.get('home_id')
+                    # Buscar el pitcher cuyo team id coincida con home_id
+                    for pid, pdata in probable_pitchers.items():
+                        if pdata.get('team', {}).get('id') == home_id:
+                            hp = pdata.get('fullName', hp)
+                            break
                 if not ap or ap == 'TBD':
-                    ap_list = box.get('away', {}).get('pitchers', [])
-                    if ap_list:
-                        ap = box.get('playerInfo', {}).get(f"ID{ap_list[0]}", {}).get('fullName', 'TBD')
-        except: pass
-            
+                    away_id = juego.get('away_id')
+                    for pid, pdata in probable_pitchers.items():
+                        if pdata.get('team', {}).get('id') == away_id:
+                            ap = pdata.get('fullName', ap)
+                            break
+        except:
+            pass
+
     return hp, ap
 
 def get_pitcher_whip(pitcher_name, fecha_corte):
