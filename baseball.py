@@ -22,41 +22,6 @@ PESO_H2H = 0.12
 PESO_PITAGORICO = 0.10  
 PESO_SPLITS = 0.10      
 LINEA_TOTALES = 8.5     
-# --- PARK FACTORS (HR) ---
-PARK_HR_FACTORS = {
-    "Colorado Rockies": 1.30,
-    "Arizona Diamondbacks": 1.15,
-    "Cincinnati Reds": 1.20,
-    "Philadelphia Phillies": 1.10,
-    "New York Yankees": 1.05,
-    "Boston Red Sox": 1.05,
-    "Baltimore Orioles": 1.08,
-    "Chicago Cubs": 0.95,
-    "Milwaukee Brewers": 1.05,
-    "Los Angeles Dodgers": 0.95,
-    "San Diego Padres": 0.90,
-    "San Francisco Giants": 0.88,
-    "Seattle Mariners": 0.90,
-    "Athletics": 0.95,
-    "Los Angeles Angels": 0.98,
-    "Texas Rangers": 1.05,
-    "Houston Astros": 1.00,
-    "Atlanta Braves": 1.00,
-    "Miami Marlins": 0.95,
-    "Washington Nationals": 1.00,
-    "New York Mets": 0.95,
-    "Pittsburgh Pirates": 0.95,
-    "St. Louis Cardinals": 0.95,
-    "Chicago White Sox": 1.00,
-    "Cleveland Guardians": 0.98,
-    "Detroit Tigers": 1.00,
-    "Kansas City Royals": 1.00,
-    "Minnesota Twins": 0.98,
-    "Tampa Bay Rays": 0.92,
-    "Toronto Blue Jays": 1.00,
-}
-
-LEAGUE_HR9 = 1.2   # promedio de HR/9 en MLB
 
 MLB_TEAM_WHITELIST = [
     "Arizona Diamondbacks", "Atlanta Braves", "Baltimore Orioles", "Boston Red Sox", 
@@ -158,50 +123,22 @@ def get_hybrid_run_projection(away_team, home_team, df):
 def get_starting_pitchers(juego):
     hp = juego.get('home_probable_pitcher', '')
     ap = juego.get('away_probable_pitcher', '')
-
-    # Si ya tenemos los nombres, los devolvemos
-    if hp and hp != 'TBD' and ap and ap != 'TBD':
-        return hp, ap
-
-    # Fallback 1: intentar con boxscore (solo sirve si el juego ya empezó)
-    try:
-        game_id = juego.get('game_id')
-        if game_id:
-            box = statsapi.boxscore_data(game_id)
-            if not hp or hp == 'TBD':
-                hp_list = box.get('home', {}).get('pitchers', [])
-                if hp_list:
-                    hp = box.get('playerInfo', {}).get(f"ID{hp_list[0]}", {}).get('fullName', hp)
-            if not ap or ap == 'TBD':
-                ap_list = box.get('away', {}).get('pitchers', [])
-                if ap_list:
-                    ap = box.get('playerInfo', {}).get(f"ID{ap_list[0]}", {}).get('fullName', ap)
-    except:
-        pass
-
-    # Fallback 2 (NUEVO): buscar en los datos completos del partido
+    
     if (not hp or hp == 'TBD' or not ap or ap == 'TBD'):
         try:
             game_id = juego.get('game_id')
             if game_id:
-                game_data = statsapi.get('game', {'gamePk': game_id})
-                probable_pitchers = game_data.get('gameData', {}).get('probablePitchers', {})
+                box = statsapi.boxscore_data(game_id)
                 if not hp or hp == 'TBD':
-                    home_id = juego.get('home_id')
-                    # Buscar el pitcher cuyo team id coincida con home_id
-                    for pid, pdata in probable_pitchers.items():
-                        if pdata.get('team', {}).get('id') == home_id:
-                            hp = pdata.get('fullName', hp)
-                            break
+                    hp_list = box.get('home', {}).get('pitchers', [])
+                    if hp_list:
+                        hp = box.get('playerInfo', {}).get(f"ID{hp_list[0]}", {}).get('fullName', 'TBD')
                 if not ap or ap == 'TBD':
-                    away_id = juego.get('away_id')
-                    for pid, pdata in probable_pitchers.items():
-                        if pdata.get('team', {}).get('id') == away_id:
-                            ap = pdata.get('fullName', ap)
-                            break
-        except:
-            pass
-
+                    ap_list = box.get('away', {}).get('pitchers', [])
+                    if ap_list:
+                        ap = box.get('playerInfo', {}).get(f"ID{ap_list[0]}", {}).get('fullName', 'TBD')
+        except: pass
+            
     return hp, ap
 
 def get_pitcher_whip(pitcher_name, fecha_corte):
@@ -242,62 +179,18 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
         return avg_whip
     except: return avg_whip
 
-def get_pitcher_hr9(pitcher_name, fecha_corte):
-    """HR/9 de los últimos 7 juegos del pitcher. Si no hay datos, devuelve LEAGUE_HR9."""
-    if not pitcher_name or pitcher_name == 'TBD':
-        return LEAGUE_HR9
-    try:
-        players = statsapi.lookup_player(pitcher_name)
-        if not players:
-            return LEAGUE_HR9
-        player_id = players[0]['id']
-        raw_data = statsapi.get('people', {'personIds': player_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
-        if 'people' not in raw_data or not raw_data['people']:
-            return LEAGUE_HR9
-        person = raw_data['people'][0]
-        for stat_block in person.get('stats', []):
-            if stat_block.get('type', {}).get('displayName') == 'gameLog':
-                splits = stat_block.get('splits', [])
-                valid = [s for s in splits if s.get('date', '') < fecha_corte]
-                valid.sort(key=lambda x: x.get('date', ''), reverse=True)
-                last_7 = valid[:7]
-                total_hr = 0
-                total_outs = 0
-                for game in last_7:
-                    gs = game.get('stat', {})
-                    total_hr += int(gs.get('homeRuns', 0))
-                    ip_str = str(gs.get('inningsPitched', '0.0'))
-                    if '.' in ip_str:
-                        full, frac = ip_str.split('.')
-                        total_outs += int(full)*3 + int(frac)
-                    else:
-                        total_outs += int(ip_str)*3
-                if total_outs > 0:
-                    return round((total_hr / (total_outs / 3.0)) * 9, 2)
-        return LEAGUE_HR9
-    except:
-        return LEAGUE_HR9
-
 def get_hr_hunters(anio, fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
         equipos_hoy = {}
-        # Mapa de team_id -> juego y mapeo inverso para pitchers
-        team_game_map = {}
         for juego in juegos_hoy:
-            if juego.get('status', '') in ['Postponed', 'Cancelled']:
-                continue
-            home_id = juego.get('home_id')
-            away_id = juego.get('away_id')
-            equipos_hoy[home_id] = {'condicion': 'Local', 'status': juego.get('status')}
-            equipos_hoy[away_id] = {'condicion': 'Visitante', 'status': juego.get('status')}
-            team_game_map[home_id] = juego
-            team_game_map[away_id] = juego
-
+            if juego.get('status', '') not in ['Postponed', 'Cancelled']:
+                equipos_hoy[juego.get('home_id')] = {'condicion': 'Local', 'status': juego.get('status')}
+                equipos_hoy[juego.get('away_id')] = {'condicion': 'Visitante', 'status': juego.get('status')}
+        
         data = statsapi.get('stats_leaders', {'leaderCategories': 'homeRuns', 'season': anio, 'limit': 80, 'statGroup': 'hitting'})
-        if not data or 'leagueLeaders' not in data or len(data['leagueLeaders']) == 0:
-            return []
-
+        if not data or 'leagueLeaders' not in data or len(data['leagueLeaders']) == 0: return []
+            
         leaders = data['leagueLeaders'][0].get('leaders', [])
         jugadores_activos = []
         for p in leaders:
@@ -306,103 +199,66 @@ def get_hr_hunters(anio, fecha_hoy):
                 p['condicion_hoy'] = equipos_hoy[team_id]['condicion']
                 p['team_name'] = p.get('team', {}).get('name', 'Unknown')
                 p['game_status'] = equipos_hoy[team_id]['status']
-                p['team_id'] = team_id
                 jugadores_activos.append(p)
-
+                
         resultados = []
         ayer_dt = datetime.datetime.strptime(fecha_hoy, '%Y-%m-%d') - datetime.timedelta(days=1)
         fecha_ayer_str = ayer_dt.strftime('%Y-%m-%d')
-
-        # Cache para evitar repetir llamadas al mismo pitcher
-        pitcher_hr9_cache = {}
-
+        
         for p in jugadores_activos:
             p_id = p.get('person', {}).get('id')
             p_name = p.get('person', {}).get('fullName')
             team_name = p.get('team_name', 'Unknown')
             condicion = p.get('condicion_hoy', 'Visitante')
-            team_id = p.get('team_id')
-
-            # Obtener juego para este equipo
-            juego = team_game_map.get(team_id)
-            if not juego:
-                continue
-
-            # Identificar pitcher rival
-            if condicion == 'Local':
-                opposing_pitcher = juego.get('away_probable_pitcher', '')
-            else:
-                opposing_pitcher = juego.get('home_probable_pitcher', '')
-
-            # Si sigue siendo TBD, intentar obtenerlo de la función mejorada
-            if not opposing_pitcher or opposing_pitcher == 'TBD':
-                hp, ap = get_starting_pitchers(juego)
-                opposing_pitcher = ap if condicion == 'Local' else hp
-
-            # Obtener HR/9 del pitcher rival (cacheado)
-            if opposing_pitcher and opposing_pitcher != 'TBD':
-                if opposing_pitcher not in pitcher_hr9_cache:
-                    pitcher_hr9_cache[opposing_pitcher] = get_pitcher_hr9(opposing_pitcher, fecha_hoy)
-                pitcher_hr9 = pitcher_hr9_cache[opposing_pitcher]
-            else:
-                pitcher_hr9 = LEAGUE_HR9
-
-            # Park factor (basado en el equipo local)
-            home_team_name = juego.get('home_name', '')
-            park_factor = PARK_HR_FACTORS.get(home_team_name, 1.0)
-
-            # Datos del bateador
+            
             raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'stats(group=[hitting],type=[season,gameLog])'})
             person = raw_data.get('people', [{}])[0]
             stats_blocks = person.get('stats', [])
-
+            
             season_ab = 1; season_hr = 0
             l10_hr = 0; l10_ab = 0
             hr_hoy_real = 0; ab_hoy_real = 0
             dio_jonron_ayer = False
-
+            
             for block in stats_blocks:
                 if block.get('type', {}).get('displayName') == 'season':
                     season_ab = int(block.get('splits', [{}])[0].get('stat', {}).get('atBats', 1))
                     season_hr = int(block.get('splits', [{}])[0].get('stat', {}).get('homeRuns', 0))
                 elif block.get('type', {}).get('displayName') == 'gameLog':
                     splits = block.get('splits', [])
+                    
                     valid_splits = [s for s in splits if s.get('date', '') < fecha_hoy]
                     valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
+                    
                     for game in valid_splits[:10]:
                         g_stats = game.get('stat', {})
                         if game.get('date', '') == fecha_ayer_str and int(g_stats.get('homeRuns', 0)) > 0:
                             dio_jonron_ayer = True
                         l10_hr += int(g_stats.get('homeRuns', 0))
                         l10_ab += int(g_stats.get('atBats', 0))
+                        
                     for game in splits:
                         if game.get('date') == fecha_hoy:
                             hr_hoy_real += int(game.get('stat', {}).get('homeRuns', 0))
                             ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
-
-            if dio_jonron_ayer:
-                continue
-
+            
+            if dio_jonron_ayer: continue
+            
             season_hr = max(0, season_hr - hr_hoy_real)
             season_ab = max(1, season_ab - ab_hoy_real)
             l10_ab = max(1, l10_ab)
-
-            # Índice base
+            
             hr_index = ((season_hr / season_ab * 0.3) + (l10_hr / l10_ab * 0.7)) * (1.10 if condicion == 'Local' else 1.0)
+            hr_index_rounded = round(hr_index, 4)
 
-            # Ajuste por lanzador rival y park factor
-            pitcher_factor = pitcher_hr9 / LEAGUE_HR9
-            adjusted_hr_index = hr_index * pitcher_factor * park_factor
-            hr_index_rounded = round(adjusted_hr_index, 4)
-
-            # Probabilidad de al menos 1 HR en 4 turnos
-            prob_hr_game = 1 - (1 - adjusted_hr_index) ** 4
+            # Nuevo: probabilidad de al menos 1 HR en el partido (4 turnos)
+            prob_hr_game = 1 - (1 - hr_index) ** 4
             prob_hr_pct = int(round(prob_hr_game * 100))
-
+            
             eval_str = "⏳ Pendiente"
             if p['game_status'] in ['Final', 'Game Over']:
                 eval_str = "✅ Acierto" if hr_hoy_real > 0 else "❌ Fallo"
-
+                
             resultados.append({
                 "⚾ Bateador": p_name,
                 "👕 Equipo": team_name,
@@ -412,12 +268,12 @@ def get_hr_hunters(anio, fecha_hoy):
                 "📊 Turnos (L10)": l10_ab,
                 "📝 Evaluación": eval_str,
                 "score": hr_index_rounded,
-                "prob_hr_game": prob_hr_pct
+                "prob_hr_game": prob_hr_pct   # guardamos la probabilidad
             })
-
+            
         resultados.sort(key=lambda x: (x['score'], x['⚾ Bateador']), reverse=True)
         resultados = resultados[:4]
-
+        
         tabla_final = []
         for r in resultados:
             tabla_final.append({
@@ -427,75 +283,47 @@ def get_hr_hunters(anio, fecha_hoy):
                 "🏆 HR Año": r["🏆 HR Año"],
                 "🔥 HR (L10)": r["🔥 HR (L10)"],
                 "📈 Ratio de Poder (L10)": f"{r['🔥 HR (L10)']} HR / {r['📊 Turnos (L10)']} VB",
-                "🎯 Prob. HR (Partido)": f"{r['prob_hr_game']}%",
+                "🎯 Prob. HR (Partido)": f"{r['prob_hr_game']}%",   # columna nueva
                 "📝 Evaluación": r["📝 Evaluación"]
             })
         return tabla_final
-    except Exception:
-        return []
-
-def get_pitcher_season_ip_gs(pitcher_name):
-    """Devuelve (innings_pitched, games_started) de la temporada actual."""
-    if not pitcher_name or pitcher_name == 'TBD':
-        return 0, 0
-    try:
-        players = statsapi.lookup_player(pitcher_name)
-        if not players:
-            return 0, 0
-        player_id = players[0]['id']
-        raw_data = statsapi.get('people', {'personIds': player_id, 'hydrate': 'stats(group=[pitching],type=[season])'})
-        if 'people' not in raw_data or not raw_data['people']:
-            return 0, 0
-        person = raw_data['people'][0]
-        for block in person.get('stats', []):
-            if block.get('type', {}).get('displayName') == 'season':
-                splits = block.get('splits', [])
-                if splits:
-                    stat = splits[0].get('stat', {})
-                    ip = float(stat.get('inningsPitched', 0))
-                    gs = int(stat.get('gamesStarted', 0))
-                    return ip, gs
-        return 0, 0
-    except:
-        return 0, 0
+    except Exception: return []
 
 def get_strikeout_hunters(fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
-        if not juegos_hoy: return [], []
-
+        if not juegos_hoy: return []
+        
         pitchers_data = []
-        debug_info = []        # aquí guardaremos los datos de diagnóstico
-
         for juego in juegos_hoy:
             if juego.get('status', '') in ['Postponed', 'Cancelled']: continue
             g_status = juego.get('status', '')
             p_local, p_visita = get_starting_pitchers(juego)
-
+            
             matchups = [
                 (p_local, juego.get('home_name'), juego.get('away_id'), juego.get('away_name')),
                 (p_visita, juego.get('away_name'), juego.get('home_id'), juego.get('home_name'))
             ]
-
+            
             for p_name, p_team, opp_id, opp_name in matchups:
                 if not p_name or p_name == 'TBD': continue
                 players = statsapi.lookup_player(p_name)
                 if not players: continue
                 p_id = players[0]['id']
-
+                
                 raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
                 stats_blocks = raw_data.get('people', [{}])[0].get('stats', [])
-
+                
                 l7_ks = 0; l7_outs = 0; juegos_lanzados = 0; ks_hoy_real = 0
-                # --- PROCESAR SOLO EL PRIMER BLOQUE GAMELOG ---
                 for block in stats_blocks:
                     if block.get('type', {}).get('displayName') == 'gameLog':
                         splits = block.get('splits', [])
+                        
                         valid_splits = [s for s in splits if s.get('date', '') < fecha_hoy]
                         valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
                         last_7 = valid_splits[:7]
                         juegos_lanzados = len(last_7)
-
+                        
                         for game in last_7:
                             g_stats = game.get('stat', {})
                             l7_ks += int(g_stats.get('strikeOuts', 0))
@@ -503,35 +331,19 @@ def get_strikeout_hunters(fecha_hoy):
                             if '.' in ip_str:
                                 full, frac = ip_str.split('.')
                                 l7_outs += (int(full) * 3) + int(frac)
-                            else:
-                                l7_outs += int(ip_str) * 3
-
+                            else: l7_outs += int(ip_str) * 3
+                                
                         ks_hoy_real = sum([int(s.get('stat', {}).get('strikeOuts', 0)) for s in splits if s.get('date') == fecha_hoy])
-                        break   # 👈 solo un bloque, ignoramos el resto
-
-                if juegos_lanzados == 0 or l7_outs == 0:
-                    continue
-
-                # K% y K por inning reciente
-                k_per_inning = l7_ks / (l7_outs / 3.0)
-                recent_avg_ip = (l7_outs / 3.0) / juegos_lanzados
-
-                # Duración esperada
-                season_ip, season_gs = get_pitcher_season_ip_gs(p_name)
-                season_avg_ip = season_ip / max(1, season_gs) if season_gs > 0 else 0
-                if season_avg_ip > 0:
-                    expected_ip = (recent_avg_ip + season_avg_ip) / 2.0
-                else:
-                    expected_ip = recent_avg_ip
-
-                proj_k_base = k_per_inning * expected_ip
-
-                # Vulnerabilidad rival con límites
+                                
+                if juegos_lanzados == 0 or l7_outs == 0: continue
+                avg_k_per_start = l7_ks / juegos_lanzados
+                
                 team_raw = statsapi.get('teams', {'teamId': opp_id, 'hydrate': 'stats(group=[hitting],type=[season,gameLog])'})
                 opp_ks = 0; opp_pa = 1
                 try:
                     t_stats_blocks = team_raw['teams'][0].get('teamStats', [])
                     ks_equipo_hoy = 0; pa_equipo_hoy = 0
+                    
                     for b in t_stats_blocks:
                         if b.get('type', {}).get('displayName') == 'season':
                             t_stats = b['splits'][0]['stat']
@@ -542,67 +354,47 @@ def get_strikeout_hunters(fecha_hoy):
                                 if t_game.get('date') == fecha_hoy:
                                     ks_equipo_hoy += int(t_game.get('stat', {}).get('strikeOuts', 0))
                                     pa_equipo_hoy += int(t_game.get('stat', {}).get('plateAppearances', 0))
+                    
                     opp_ks = max(0, opp_ks - ks_equipo_hoy)
                     opp_pa = max(1, opp_pa - pa_equipo_hoy)
-                except:
-                    pass
-
-                # Limitar el K% del rival entre 10% y 40%
-                opp_k_pct = opp_ks / opp_pa if opp_pa > 10 else 0.225
-                opp_k_pct = max(0.10, min(0.40, opp_k_pct))
-                proj_k = proj_k_base * (opp_k_pct / 0.225)
-
-                proj_k_rounded = round(proj_k, 3)
+                except: pass
+                    
+                opp_k_pct = opp_ks / opp_pa if opp_pa > 1 else 0.225
+                proj_k = avg_k_per_start * (opp_k_pct / 0.225)
+                
+                proj_k_rounded = round(proj_k, 3) 
                 meta_ks = int(round(proj_k))
-
-                prob_meta = 1 - poisson.cdf(meta_ks - 1, proj_k) if proj_k > 0 else 0
+                
+                # Nuevo: probabilidad de alcanzar o superar la proyección (Poisson)
+                if proj_k > 0:
+                    prob_meta = 1 - poisson.cdf(meta_ks - 1, proj_k)
+                else:
+                    prob_meta = 0.0
                 prob_meta_pct = int(round(prob_meta * 100))
-
+                
                 eval_str = "⏳ Pendiente"
                 if g_status in ['Final', 'Game Over']:
                     eval_str = f"✅ Acierto ({ks_hoy_real} Ks)" if ks_hoy_real >= meta_ks else f"❌ Fallo ({ks_hoy_real} Ks)"
-
+                
                 pitchers_data.append({
                     "⚾ Abridor": p_name,
                     "👕 Equipo": p_team,
                     "⚔️ Rival": opp_name,
-                    "🔥 K/9 (L7)": int(round(k_per_inning * 9)),
-                    "🎯 Proy. Ponches": meta_ks,
+                    "🔥 K/9 (L7)": int(round((l7_ks / (l7_outs / 3.0)) * 9.0)),
+                    "🎯 Proy. Ponches": meta_ks, 
                     "📝 Evaluación": eval_str,
                     "score": proj_k_rounded,
-                    "prob_meta": prob_meta_pct
+                    "prob_meta": prob_meta_pct   # guardamos la probabilidad
                 })
-
-                # Guardar diagnóstico
-                debug_info.append({
-                    "nombre": p_name,
-                    "l7_ks": l7_ks,
-                    "l7_outs": l7_outs,
-                    "juegos_lanzados": juegos_lanzados,
-                    "k_per_inning": round(k_per_inning, 3),
-                    "recent_avg_ip": round(recent_avg_ip, 2),
-                    "season_ip": round(season_ip, 2),
-                    "season_gs": season_gs,
-                    "season_avg_ip": round(season_avg_ip, 2),
-                    "expected_ip": round(expected_ip, 2),
-                    "proj_k_base": round(proj_k_base, 2),
-                    "opp_ks": opp_ks,
-                    "opp_pa": opp_pa,
-                    "opp_k_pct": round(opp_k_pct, 3),
-                    "proj_k_final": round(proj_k, 2)
-                })
-
+                
         pitchers_data.sort(key=lambda x: (x['score'], x['⚾ Abridor']), reverse=True)
         top_4 = pitchers_data[:4]
         for r in top_4:
             r["🎯 Proy. Ponches"] = f"{r['🎯 Proy. Ponches']} Ks"
-            r["🎲 Prob. Alcanzar Proy."] = f"{r['prob_meta']}%"
+            r["🎲 Prob. Alcanzar Proy."] = f"{r['prob_meta']}%"   # añadimos columna
             del r['score'], r['prob_meta']
-
-        # Devolvemos también los diagnósticos (solo de los top 4, o de todos)
-        return top_4, debug_info
-    except Exception:
-        return [], []
+        return top_4
+    except Exception: return []
 
 # --- INICIALIZACIÓN Y CONTROL DEL TIEMPO (MEDIANOCHE ET) ---
 if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
@@ -869,13 +661,11 @@ if st.session_state.df_mlb is not None:
         st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival")
         if st.button("🎯 Cazar Ponches del Día (Top 4)", type="primary", use_container_width=True):
             with st.spinner("Haciendo el cruce de vulnerabilidad y auditando ponches finales..."):
-                resultados_k, debug_k = get_strikeout_hunters(st.session_state.fecha_hoy)
+                resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
                 if resultados_k:
                     st.session_state.resultados_k = resultados_k
-                    st.session_state.debug_k = debug_k
                 else:
                     st.session_state.resultados_k = None
-                    st.session_state.debug_k = None
                     st.warning("No hay suficientes datos de pitcheo para evaluar esta jornada.")
 
         if "resultados_k" in st.session_state and st.session_state.resultados_k is not None:
@@ -893,21 +683,6 @@ if st.session_state.df_mlb is not None:
                 c1.metric("Lanzadores Evaluados", total_evaluados)
                 c2.metric("Metas Superadas", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
-
-            # --- Diagnóstico interactivo ---
-            if "debug_k" in st.session_state and st.session_state.debug_k:
-                with st.expander("🔍 Ver datos internos de las proyecciones"):
-                    for d in st.session_state.debug_k:
-                        if any(d["nombre"] in str(r["⚾ Abridor"]) for r in st.session_state.resultados_k):
-                            st.write(f"**{d['nombre']}**")
-                            st.write(f"l7_ks: {d['l7_ks']}, l7_outs: {d['l7_outs']}, juegos: {d['juegos_lanzados']}")
-                            st.write(f"k_per_inning: {d['k_per_inning']}, recent_avg_ip: {d['recent_avg_ip']}")
-                            st.write(f"season_ip: {d['season_ip']}, season_gs: {d['season_gs']}, season_avg_ip: {d['season_avg_ip']}")
-                            st.write(f"expected_ip: {d['expected_ip']}")
-                            st.write(f"proj_k_base (sin rival): {d['proj_k_base']}")
-                            st.write(f"opp_ks: {d['opp_ks']}, opp_pa: {d['opp_pa']}, opp_k_pct: {d['opp_k_pct']}")
-                            st.write(f"proj_k final: {d['proj_k_final']}")
-                            st.markdown("---")
         elif "resultados_k" not in st.session_state:
             st.info("Presiona el botón para cazar ponches del día.")
                 
