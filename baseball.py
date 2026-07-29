@@ -848,7 +848,7 @@ if st.session_state.df_mlb is not None:
             
             # ---- INDICADOR VISUAL SEGÚN EV ----
             if ev_pct >= 0.10:
-                st.balloons()
+                st.toast('💎 Apuesta de alto valor (+10% EV)', icon='💎')
                 st.success("💎 Apuesta de alto valor (+10% EV)")
             elif ev_pct >= 0.05:
                 st.success("✅ Apuesta recomendada (+5% EV)")
