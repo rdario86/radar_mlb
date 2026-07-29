@@ -568,8 +568,8 @@ if st.session_state.df_mlb is not None:
     "📅 Cartelera del Día",
     "💣 Caza-Jonrones",
     "🔥 Caza-Ponches",
-    "🧮 Calculadora +EV",
-    "🔹 Caza-Hits (2+ Hits)"
+    "🔹 Caza-Hits (2+ Hits)",
+    "🧮 Calculadora +EV"
 ])
     
     with tab1:
@@ -791,8 +791,36 @@ if st.session_state.df_mlb is not None:
         elif "resultados_k" not in st.session_state:
             st.info("Presiona el botón para cazar ponches del día.")
                 
-    # --- NUEVA PESTAÑA 4: CALCULADORA +EV ---
     with tab4:
+        st.markdown("### 🔹 Radar de Hits: Probabilidad de 2+ Imparables")
+        if st.button("🔎 Buscar Bateadores con 2+ Hits (Top 4)", type="primary", use_container_width=True):
+            with st.spinner("Calculando probabilidades de multi-hit..."):
+                resultados_hits = get_hit_hunters(anio_sel, st.session_state.fecha_hoy)
+                if resultados_hits:
+                    st.session_state.resultados_hits = resultados_hits
+                else:
+                    st.session_state.resultados_hits = None
+                    st.warning("No se encontraron bateadores con datos suficientes para hoy.")
+
+        if "resultados_hits" in st.session_state and st.session_state.resultados_hits is not None:
+            df_hits = pd.DataFrame(st.session_state.resultados_hits)
+            df_hits_estilizado = df_hits.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
+            st.dataframe(df_hits_estilizado, use_container_width=True, hide_index=True)
+
+            total_evaluados = sum(1 for e in df_hits['📝 Evaluación'] if '✅' in e or '❌' in e)
+            aciertos = sum(1 for e in df_hits['📝 Evaluación'] if '✅' in e)
+
+            if total_evaluados > 0:
+                efectividad = (aciertos / total_evaluados) * 100
+                st.markdown("### 📊 Rendimiento Caza-Hits (2+ Imparables)")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Bateadores Evaluados", total_evaluados)
+                c2.metric("Aciertos (2+ Hits)", aciertos)
+                c3.metric("Efectividad", f"{int(round(efectividad))}%")
+        elif "resultados_hits" not in st.session_state:
+            st.info("Presiona el botón para buscar bateadores con alta probabilidad de 2+ hits.")
+
+    with tab5:
         st.markdown("### 🧮 Calculadora de Valor Esperado (+EV)")
         st.markdown("Compara la probabilidad matemática del Radar con la cuota decimal de tu casa de apuestas para descubrir si la jugada es rentable a largo plazo.")
         
@@ -836,32 +864,3 @@ if st.session_state.df_mlb is not None:
             else:
                 col2.metric("Valor Esperado (EV)", f"{ev_pct_int}%", "No Rentable (-EV)", delta_color="inverse")
                 st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita_int}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")
-
-    with tab5:
-        st.markdown("### 🔹 Radar de Hits: Probabilidad de 2+ Imparables")
-        if st.button("🔎 Buscar Bateadores con 2+ Hits (Top 4)", type="primary", use_container_width=True):
-            with st.spinner("Calculando probabilidades de multi-hit..."):
-                resultados_hits = get_hit_hunters(anio_sel, st.session_state.fecha_hoy)
-                if resultados_hits:
-                    st.session_state.resultados_hits = resultados_hits
-                else:
-                    st.session_state.resultados_hits = None
-                    st.warning("No se encontraron bateadores con datos suficientes para hoy.")
-
-        if "resultados_hits" in st.session_state and st.session_state.resultados_hits is not None:
-            df_hits = pd.DataFrame(st.session_state.resultados_hits)
-            df_hits_estilizado = df_hits.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
-            st.dataframe(df_hits_estilizado, use_container_width=True, hide_index=True)
-
-            total_evaluados = sum(1 for e in df_hits['📝 Evaluación'] if '✅' in e or '❌' in e)
-            aciertos = sum(1 for e in df_hits['📝 Evaluación'] if '✅' in e)
-
-            if total_evaluados > 0:
-                efectividad = (aciertos / total_evaluados) * 100
-                st.markdown("### 📊 Rendimiento Caza-Hits (2+ Imparables)")
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Bateadores Evaluados", total_evaluados)
-                c2.metric("Aciertos (2+ Hits)", aciertos)
-                c3.metric("Efectividad", f"{int(round(efectividad))}%")
-        elif "resultados_hits" not in st.session_state:
-            st.info("Presiona el botón para buscar bateadores con alta probabilidad de 2+ hits.")
