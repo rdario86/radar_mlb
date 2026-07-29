@@ -462,9 +462,11 @@ def get_pitcher_season_ip_gs(pitcher_name):
 def get_strikeout_hunters(fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
-        if not juegos_hoy: return []
+        if not juegos_hoy: return [], []
 
         pitchers_data = []
+        debug_info = []        # aquí guardaremos los datos de diagnóstico
+
         for juego in juegos_hoy:
             if juego.get('status', '') in ['Postponed', 'Cancelled']: continue
             g_status = juego.get('status', '')
@@ -485,6 +487,7 @@ def get_strikeout_hunters(fecha_hoy):
                 stats_blocks = raw_data.get('people', [{}])[0].get('stats', [])
 
                 l7_ks = 0; l7_outs = 0; juegos_lanzados = 0; ks_hoy_real = 0
+                # --- PROCESAR SOLO EL PRIMER BLOQUE GAMELOG ---
                 for block in stats_blocks:
                     if block.get('type', {}).get('displayName') == 'gameLog':
                         splits = block.get('splits', [])
@@ -504,14 +507,16 @@ def get_strikeout_hunters(fecha_hoy):
                                 l7_outs += int(ip_str) * 3
 
                         ks_hoy_real = sum([int(s.get('stat', {}).get('strikeOuts', 0)) for s in splits if s.get('date') == fecha_hoy])
+                        break   # 👈 solo un bloque, ignoramos el resto
 
-                if juegos_lanzados == 0 or l7_outs == 0: continue
+                if juegos_lanzados == 0 or l7_outs == 0:
+                    continue
 
                 # K% y K por inning reciente
-                k_per_inning = l7_ks / (l7_outs / 3.0)  # K por cada 9 outs (1 IP)
-                recent_avg_ip = (l7_outs / 3.0) / juegos_lanzados  # IP promedio últimas 7 salidas
+                k_per_inning = l7_ks / (l7_outs / 3.0)
+                recent_avg_ip = (l7_outs / 3.0) / juegos_lanzados
 
-                # Duración esperada: combinación de IP reciente + IP temporada
+                # Duración esperada
                 season_ip, season_gs = get_pitcher_season_ip_gs(p_name)
                 season_avg_ip = season_ip / max(1, season_gs) if season_gs > 0 else 0
                 if season_avg_ip > 0:
@@ -519,10 +524,9 @@ def get_strikeout_hunters(fecha_hoy):
                 else:
                     expected_ip = recent_avg_ip
 
-                # Proyección de ponches
-                proj_k = k_per_inning * expected_ip
+                proj_k_base = k_per_inning * expected_ip
 
-                # Vulnerabilidad del rival (K%) – se mantiene igual que antes
+                # Vulnerabilidad rival con límites
                 team_raw = statsapi.get('teams', {'teamId': opp_id, 'hydrate': 'stats(group=[hitting],type=[season,gameLog])'})
                 opp_ks = 0; opp_pa = 1
                 try:
@@ -543,13 +547,14 @@ def get_strikeout_hunters(fecha_hoy):
                 except:
                     pass
 
-                opp_k_pct = opp_ks / opp_pa if opp_pa > 1 else 0.225
-                proj_k = proj_k * (opp_k_pct / 0.225)  # ajuste final por rival
+                # Limitar el K% del rival entre 10% y 40%
+                opp_k_pct = opp_ks / opp_pa if opp_pa > 10 else 0.225
+                opp_k_pct = max(0.10, min(0.40, opp_k_pct))
+                proj_k = proj_k_base * (opp_k_pct / 0.225)
 
                 proj_k_rounded = round(proj_k, 3)
                 meta_ks = int(round(proj_k))
 
-                # Probabilidad de alcanzar la meta (Poisson)
                 prob_meta = 1 - poisson.cdf(meta_ks - 1, proj_k) if proj_k > 0 else 0
                 prob_meta_pct = int(round(prob_meta * 100))
 
@@ -568,15 +573,36 @@ def get_strikeout_hunters(fecha_hoy):
                     "prob_meta": prob_meta_pct
                 })
 
+                # Guardar diagnóstico
+                debug_info.append({
+                    "nombre": p_name,
+                    "l7_ks": l7_ks,
+                    "l7_outs": l7_outs,
+                    "juegos_lanzados": juegos_lanzados,
+                    "k_per_inning": round(k_per_inning, 3),
+                    "recent_avg_ip": round(recent_avg_ip, 2),
+                    "season_ip": round(season_ip, 2),
+                    "season_gs": season_gs,
+                    "season_avg_ip": round(season_avg_ip, 2),
+                    "expected_ip": round(expected_ip, 2),
+                    "proj_k_base": round(proj_k_base, 2),
+                    "opp_ks": opp_ks,
+                    "opp_pa": opp_pa,
+                    "opp_k_pct": round(opp_k_pct, 3),
+                    "proj_k_final": round(proj_k, 2)
+                })
+
         pitchers_data.sort(key=lambda x: (x['score'], x['⚾ Abridor']), reverse=True)
         top_4 = pitchers_data[:4]
         for r in top_4:
             r["🎯 Proy. Ponches"] = f"{r['🎯 Proy. Ponches']} Ks"
             r["🎲 Prob. Alcanzar Proy."] = f"{r['prob_meta']}%"
             del r['score'], r['prob_meta']
-        return top_4
+
+        # Devolvemos también los diagnósticos (solo de los top 4, o de todos)
+        return top_4, debug_info
     except Exception:
-        return []
+        return [], []
 
 # --- INICIALIZACIÓN Y CONTROL DEL TIEMPO (MEDIANOCHE ET) ---
 if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
@@ -843,11 +869,13 @@ if st.session_state.df_mlb is not None:
         st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival")
         if st.button("🎯 Cazar Ponches del Día (Top 4)", type="primary", use_container_width=True):
             with st.spinner("Haciendo el cruce de vulnerabilidad y auditando ponches finales..."):
-                resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
+                resultados_k, debug_k = get_strikeout_hunters(st.session_state.fecha_hoy)
                 if resultados_k:
                     st.session_state.resultados_k = resultados_k
+                    st.session_state.debug_k = debug_k
                 else:
                     st.session_state.resultados_k = None
+                    st.session_state.debug_k = None
                     st.warning("No hay suficientes datos de pitcheo para evaluar esta jornada.")
 
         if "resultados_k" in st.session_state and st.session_state.resultados_k is not None:
@@ -865,6 +893,21 @@ if st.session_state.df_mlb is not None:
                 c1.metric("Lanzadores Evaluados", total_evaluados)
                 c2.metric("Metas Superadas", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
+
+            # --- Diagnóstico interactivo ---
+            if "debug_k" in st.session_state and st.session_state.debug_k:
+                with st.expander("🔍 Ver datos internos de las proyecciones"):
+                    for d in st.session_state.debug_k:
+                        if any(d["nombre"] in str(r["⚾ Abridor"]) for r in st.session_state.resultados_k):
+                            st.write(f"**{d['nombre']}**")
+                            st.write(f"l7_ks: {d['l7_ks']}, l7_outs: {d['l7_outs']}, juegos: {d['juegos_lanzados']}")
+                            st.write(f"k_per_inning: {d['k_per_inning']}, recent_avg_ip: {d['recent_avg_ip']}")
+                            st.write(f"season_ip: {d['season_ip']}, season_gs: {d['season_gs']}, season_avg_ip: {d['season_avg_ip']}")
+                            st.write(f"expected_ip: {d['expected_ip']}")
+                            st.write(f"proj_k_base (sin rival): {d['proj_k_base']}")
+                            st.write(f"opp_ks: {d['opp_ks']}, opp_pa: {d['opp_pa']}, opp_k_pct: {d['opp_k_pct']}")
+                            st.write(f"proj_k final: {d['proj_k_final']}")
+                            st.markdown("---")
         elif "resultados_k" not in st.session_state:
             st.info("Presiona el botón para cazar ponches del día.")
                 
