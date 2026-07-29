@@ -258,7 +258,10 @@ def get_hr_hunters(anio, fecha_hoy):
             
             eval_str = "⏳ Pendiente"
             if p['game_status'] in ['Final', 'Game Over']:
-                eval_str = "✅ Acierto" if hr_hoy_real > 0 else "❌ Fallo"
+                if ab_hoy_real == 0:
+                    eval_str = "🚫 No jugó"
+                else:
+                    eval_str = "✅ Acierto" if hr_hoy_real > 0 else "❌ Fallo"
                 
             resultados.append({
                 "⚾ Bateador": p_name,
@@ -367,7 +370,10 @@ def get_hit_hunters(anio, fecha_hoy):
 
             eval_str = "⏳ Pendiente"
             if game_status in ['Final', 'Game Over']:
-                eval_str = "✅ Acierto" if hits_hoy_real >= 2 else "❌ Fallo"
+                if ab_hoy_real == 0:
+                    eval_str = "🚫 No jugó"
+                else:
+                    eval_str = "✅ Acierto" if hits_hoy_real >= 2 else "❌ Fallo"
 
             resultados.append({
                 "⚾ Bateador": p_name,
@@ -432,7 +438,18 @@ def get_strikeout_hunters(fecha_hoy):
                                 l7_outs += (int(full) * 3) + int(frac)
                             else: l7_outs += int(ip_str) * 3
                                 
-                        ks_hoy_real = sum([int(s.get('stat', {}).get('strikeOuts', 0)) for s in splits if s.get('date') == fecha_hoy])
+                        ks_hoy_real = 0
+                        outs_hoy_real = 0   # nuevo
+                        for s in splits:
+                            if s.get('date') == fecha_hoy:
+                                gs = s.get('stat', {})
+                                ks_hoy_real += int(gs.get('strikeOuts', 0))
+                                ip_str = str(gs.get('inningsPitched', '0.0'))
+                                if '.' in ip_str:
+                                    full, frac = ip_str.split('.')
+                                    outs_hoy_real += (int(full) * 3) + int(frac)
+                                else:
+                                    outs_hoy_real += int(ip_str) * 3
                                 
                 if juegos_lanzados == 0 or l7_outs == 0: continue
                 avg_k_per_start = l7_ks / juegos_lanzados
@@ -473,7 +490,10 @@ def get_strikeout_hunters(fecha_hoy):
                 
                 eval_str = "⏳ Pendiente"
                 if g_status in ['Final', 'Game Over']:
-                    eval_str = f"✅ Acierto ({ks_hoy_real} Ks)" if ks_hoy_real >= meta_ks else f"❌ Fallo ({ks_hoy_real} Ks)"
+                    if outs_hoy_real == 0:          # No lanzó en el partido
+                        eval_str = "🚫 No lanzó"
+                    else:
+                        eval_str = f"✅ Acierto ({ks_hoy_real} Ks)" if ks_hoy_real >= meta_ks else f"❌ Fallo ({ks_hoy_real} Ks)"
                 
                 pitchers_data.append({
                     "⚾ Abridor": p_name,
