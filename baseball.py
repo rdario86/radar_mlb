@@ -662,69 +662,17 @@ if st.session_state.df_mlb is not None:
                             pct_bruto = prob_final_local if prob_final_local > 0.5 else 1.0 - prob_final_local
                             pct_final = int(round(max(min(pct_bruto, 0.99), 0.01) * 100))
 
-                            c_v, c_l = get_hybrid_run_projection(e_visita, e_local, df_filtrado)
-                            c_l = max(0.5, c_l + (whip_v - 1.30)*1.5)
-                            c_v = max(0.5, c_v + (whip_l - 1.30)*1.5)
-                            total_runs = round(c_v + c_l, 2)
-
-                            # --- Probabilidad real de Over/Under con Poisson ---
-                            if total_runs > LINEA_TOTALES:
-                                ou_pick = "ALTA"
-                                prob_total = 1 - poisson.cdf(8, total_runs)   # P(X >= 9)
-                            else:
-                                ou_pick = "BAJA"
-                                prob_total = poisson.cdf(8, total_runs)       # P(X <= 8)
-                            
-                            confianza_total = int(round(prob_total * 100))
-                            total_runs_int = int(round(total_runs))
-
-                            total_runs = round(c_v + c_l, 2)
-
-                            # --- Probabilidad real de Over/Under con Poisson ---
-                            if total_runs > LINEA_TOTALES:
-                                ou_pick = "ALTA"
-                                prob_total = 1 - poisson.cdf(8, total_runs)   # P(X >= 9)
-                            else:
-                                ou_pick = "BAJA"
-                                prob_total = poisson.cdf(8, total_runs)       # P(X <= 8)
-                            
-                            confianza_total = int(round(prob_total * 100))
-                            total_runs_int = int(round(total_runs))
-
-                            # --- Preparar las dos opciones de jugada ---
-                            # 1. Ganador del partido
-                            jugada_str_gan = f"{ganador} (A Ganar)"
-                            prob_str_gan = f"{pct_final}%"
-                            score_gan = pct_final
-
-                            # 2. Total de carreras
-                            jugada_str_tot = f"{ou_pick} de {LINEA_TOTALES} (Proy: {total_runs_int})"
-                            prob_str_tot = f"{confianza_total}%"
-                            score_tot = confianza_total
-
-                            # Elegir la de mayor confianza
-                            opciones = [
-                                ("G", score_gan, jugada_str_gan, prob_str_gan, score_gan),
-                                ("T", score_tot, jugada_str_tot, prob_str_tot, score_tot)
-                            ]
-                            tipo, _, jugada_str, prob_str, score_val = max(opciones, key=lambda x: x[1])
+                            jugada_str = f"{ganador} (A Ganar)"
+                            prob_str = f"{pct_final}%"
+                            score_val = pct_final
 
                             eval_str = "⏳ Pendiente"
                             if estado_juego in ['Final', 'Game Over']:
                                 r_local = juego.get('home_score', 0)
                                 r_visita = juego.get('away_score', 0)
                                 r_ganador = e_local if r_local > r_visita else e_visita
-                                r_total = r_local + r_visita
-
                                 marcador_str = f"({r_local}-{r_visita})"
-
-                                if "A Ganar" in jugada_str:
-                                    eval_str = f"✅ Acierto {marcador_str}" if r_ganador in jugada_str else f"❌ Fallo {marcador_str}"
-                                else:
-                                    if "ALTA" in jugada_str and r_total > LINEA_TOTALES: eval_str = f"✅ Acierto (Total: {r_total})"
-                                    elif "BAJA" in jugada_str and r_total < LINEA_TOTALES: eval_str = f"✅ Acierto (Total: {r_total})"
-                                    elif r_total == LINEA_TOTALES: eval_str = f"🔄 Push (Total: {r_total})"
-                                    else: eval_str = f"❌ Fallo (Total: {r_total})"
+                                eval_str = f"✅ Acierto {marcador_str}" if r_ganador == ganador else f"❌ Fallo {marcador_str}"
 
                             resultados_jornada.append({
                                 "⏰ Hora (ET)": hora_et,
