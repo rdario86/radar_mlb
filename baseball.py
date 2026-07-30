@@ -13,7 +13,7 @@ from scipy.stats import binom
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
-st.markdown("Proyección Sabermétrica, Líneas de Apuestas y Auditoría de Resultados Reales")
+st.markdown("Proyección Sabermétrica")
 st.markdown("---")
 
 # --- PARÁMETROS SABERMÉTRICOS FIJOS ---
