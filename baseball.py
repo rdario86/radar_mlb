@@ -199,7 +199,7 @@ def get_hr_hunters(anio, fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
         equipos_hoy = {}
-        team_game_map = {}   # nuevo: para obtener el enfrentamiento
+        team_game_map = {}
         for juego in juegos_hoy:
             if juego.get('status', '') not in ['Postponed', 'Cancelled']:
                 home_id = juego.get('home_id')
@@ -228,7 +228,7 @@ def get_hr_hunters(anio, fecha_hoy):
         ayer_dt = datetime.datetime.strptime(fecha_hoy, '%Y-%m-%d') - datetime.timedelta(days=1)
         fecha_ayer_str = ayer_dt.strftime('%Y-%m-%d')
 
-        # Caché de mano de pitchers para no repetir llamadas
+        # Cache de manos de pitchers para evitar repetir llamadas
         pitcher_hand_cache = {}
 
         for p in jugadores_activos:
@@ -288,7 +288,7 @@ def get_hr_hunters(anio, fecha_hoy):
             season_ab = max(1, season_ab - ab_hoy_real)
             l10_ab = max(1, l10_ab)
 
-            # Índice base (sin platoon aún)
+            # Índice base (sin platoon)
             hr_index = ((season_hr / season_ab * 0.3) + (l10_hr / l10_ab * 0.7)) * (1.10 if condicion == 'Local' else 1.0)
 
             # Ajuste por mano del lanzador rival (platoon)
@@ -297,17 +297,13 @@ def get_hr_hunters(anio, fecha_hoy):
                 if opposing_pitcher not in pitcher_hand_cache:
                     pitcher_hand_cache[opposing_pitcher] = get_pitcher_hand(opposing_pitcher)
                 pitcher_hand = pitcher_hand_cache[opposing_pitcher]
-                # Obtener mano del bateador
+                bat_hand = person.get('batSide', {}).get('code', 'U')
                 if pitcher_hand in ('R', 'L') and bat_hand in ('R', 'L'):
-                    if pitcher_hand != bat_hand:   # mano contraria
-                        if bat_hand == 'L':        # bateador zurdo vs. derecho
+                    if pitcher_hand != bat_hand:
+                        if bat_hand == 'L':
                             factor_platoon = 1.25
-                        else:                      # bateador diestro vs. zurdo
+                        else:
                             factor_platoon = 1.15
-                if pitcher_hand in ('R', 'L') and bat_hand in ('R', 'L'):
-                    if pitcher_hand != bat_hand:   # mano contraria
-                        factor_platoon = 1.10
-                # Si alguno es S (switch) o desconocido, no ajustamos (factor 1.0)
 
             hr_index *= factor_platoon
             hr_index_rounded = round(hr_index, 4)
