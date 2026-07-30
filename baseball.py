@@ -298,7 +298,12 @@ def get_hr_hunters(anio, fecha_hoy):
                     pitcher_hand_cache[opposing_pitcher] = get_pitcher_hand(opposing_pitcher)
                 pitcher_hand = pitcher_hand_cache[opposing_pitcher]
                 # Obtener mano del bateador
-                bat_hand = person.get('batSide', {}).get('code', 'U')   # R, L, S (switch), U (unknown)
+                if pitcher_hand in ('R', 'L') and bat_hand in ('R', 'L'):
+                if pitcher_hand != bat_hand:   # mano contraria
+                    if bat_hand == 'L':        # bateador zurdo vs. derecho
+                        factor_platoon = 1.25
+                    else:                      # bateador diestro vs. zurdo
+                        factor_platoon = 1.15
                 if pitcher_hand in ('R', 'L') and bat_hand in ('R', 'L'):
                     if pitcher_hand != bat_hand:   # mano contraria
                         factor_platoon = 1.10
