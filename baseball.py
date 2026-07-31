@@ -435,7 +435,7 @@ def get_hit_hunters(anio, fecha_hoy):
                             hits_hoy_real += int(game.get('stat', {}).get('hits', 0))
                             ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
 
-            # Filtro anti‑racha: si ayer dio 2+ hits, lo descartamos
+            # Filtro anti‑racha: si ayer dio 1+ hits, lo descartamos
             if dio_2hits_ayer: continue
 
             # Si el partido terminó y no jugó, lo excluimos
@@ -902,7 +902,7 @@ if st.session_state.df_mlb is not None:
                 c2.metric("Aciertos (2+ Hits)", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
         elif clave_hits not in st.session_state:
-            st.info("Presiona el botón para buscar bateadores con alta probabilidad de 2+ hits.")
+            st.info("Presiona el botón para buscar bateadores con alta probabilidad de 1+ hits.")
 
     with tab5:
         st.markdown("### 🧮 Calculadora de Valor Esperado (+EV)")
