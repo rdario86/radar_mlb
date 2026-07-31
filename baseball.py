@@ -625,7 +625,7 @@ st.sidebar.markdown("---")
 
 # --- BARRA LATERAL: MOTOR DE DATOS ---
 st.sidebar.markdown("### 📥 Sincronización")
-anio_sel = st.sidebar.selectbox("Temporada a procesar:", [2026, 2025, 2024])
+anio_sel = datetime.datetime.now().year
 
 if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
     with st.spinner("Actualizando base de datos central..."):
