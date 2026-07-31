@@ -963,13 +963,9 @@ if st.session_state.df_mlb is not None:
     with tab6:
         st.markdown("### 📊 Auditoría Histórica de Efectividad")
         st.markdown("Evalúa el rendimiento del radar en un rango de días pasados.")
-        
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            dias_auditoria = st.selectbox("Período de análisis:", [3, 7, 15, 30])
-        with col2:
-            st.markdown("&nbsp;")
-            ejecutar_auditoria = st.button("🔍 Ejecutar Auditoría", type="primary", use_container_width=True)
+                
+        dias_auditoria = st.selectbox("Período de análisis:", [3, 7, 15, 30])
+        ejecutar_auditoria = st.button("🔍 Ejecutar Auditoría", type="primary", use_container_width=True)
         
         if ejecutar_auditoria:
             hoy = datetime.date.today()
