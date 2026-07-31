@@ -196,6 +196,20 @@ def get_pitcher_hand(pitcher_name):
         return 'U'
 
 def get_hr_hunters(anio, fecha_hoy):
+    # Park Factors actualizados (promedio 2024‑2025)
+    PARK_HR_FACTORS = {
+        "Arizona Diamondbacks": 1.08, "Atlanta Braves": 1.02, "Baltimore Orioles": 1.10,
+        "Boston Red Sox": 1.06, "Chicago Cubs": 0.96, "Chicago White Sox": 1.00,
+        "Cincinnati Reds": 1.22, "Cleveland Guardians": 0.98, "Colorado Rockies": 1.35,
+        "Detroit Tigers": 0.98, "Houston Astros": 1.02, "Kansas City Royals": 0.99,
+        "Los Angeles Angels": 1.00, "Los Angeles Dodgers": 0.95, "Miami Marlins": 0.94,
+        "Milwaukee Brewers": 1.07, "Minnesota Twins": 0.97, "New York Mets": 0.95,
+        "New York Yankees": 1.08, "Athletics": 0.96, "Philadelphia Phillies": 1.05,
+        "Pittsburgh Pirates": 0.93, "San Diego Padres": 0.88, "San Francisco Giants": 0.85,
+        "Seattle Mariners": 0.91, "St. Louis Cardinals": 0.95, "Tampa Bay Rays": 0.92,
+        "Texas Rangers": 1.04, "Toronto Blue Jays": 1.01, "Washington Nationals": 1.00,
+    }
+
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
         equipos_hoy = {}
@@ -228,7 +242,7 @@ def get_hr_hunters(anio, fecha_hoy):
         ayer_dt = datetime.datetime.strptime(fecha_hoy, '%Y-%m-%d') - datetime.timedelta(days=1)
         fecha_ayer_str = ayer_dt.strftime('%Y-%m-%d')
 
-        # Cache de manos de pitchers para evitar repetir llamadas
+        # Cache de manos de pitchers
         pitcher_hand_cache = {}
 
         for p in jugadores_activos:
@@ -281,6 +295,7 @@ def get_hr_hunters(anio, fecha_hoy):
                             hr_hoy_real += int(game.get('stat', {}).get('homeRuns', 0))
                             ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
 
+            # Filtros
             if dio_jonron_ayer: continue
             if game_status in ['Final', 'Game Over'] and ab_hoy_real == 0: continue
 
@@ -288,10 +303,10 @@ def get_hr_hunters(anio, fecha_hoy):
             season_ab = max(1, season_ab - ab_hoy_real)
             l10_ab = max(1, l10_ab)
 
-            # Índice base (sin platoon)
+            # Índice base
             hr_index = ((season_hr / season_ab * 0.3) + (l10_hr / l10_ab * 0.7)) * (1.10 if condicion == 'Local' else 1.0)
 
-            # Ajuste por mano del lanzador rival (platoon)
+            # 1. Ajuste por mano del lanzador (platoon)
             factor_platoon = 1.0
             if opposing_pitcher and opposing_pitcher != 'TBD':
                 if opposing_pitcher not in pitcher_hand_cache:
@@ -304,10 +319,16 @@ def get_hr_hunters(anio, fecha_hoy):
                             factor_platoon = 1.25
                         else:
                             factor_platoon = 1.15
-
             hr_index *= factor_platoon
+
+            # 2. Ajuste por park factor del estadio local
+            home_team_name = juego.get('home_name', '') if juego else ''
+            park_factor = PARK_HR_FACTORS.get(home_team_name, 1.0)
+            hr_index *= park_factor
+
             hr_index_rounded = round(hr_index, 4)
 
+            # Probabilidad de al menos 1 HR en 4 turnos
             prob_hr_game = 1 - (1 - hr_index) ** 4
             prob_hr_pct = int(round(prob_hr_game * 100))
 
