@@ -855,8 +855,8 @@ if st.session_state.df_mlb is not None:
                 
     with tab4:
         st.markdown("### 🔹 Radar de Hits: Probabilidad de 1+ Imparables")
-        if st.button("🔎 Buscar Bateadores con 2+ Hits (Top 4)", type="primary", use_container_width=True):
-            with st.spinner("Calculando probabilidades de multi-hit..."):
+        if st.button("🔎 Buscar Bateadores con 1+ Hits (Top 4)", type="primary", use_container_width=True):
+            with st.spinner("Calculando probabilidades de dar hits..."):
                 resultados_hits = get_hit_hunters(anio_sel, st.session_state.fecha_hoy)
                 if resultados_hits:
                     st.session_state[f"resultados_hits_{st.session_state.fecha_hoy}"] = resultados_hits
