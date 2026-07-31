@@ -961,11 +961,16 @@ if st.session_state.df_mlb is not None:
                 st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita_int}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")
 
     with tab6:
+        with tab6:
         st.markdown("### 📊 Auditoría Histórica de Efectividad")
         st.markdown("Evalúa el rendimiento del radar en un rango de días pasados.")
-                
-        dias_auditoria = st.selectbox("Período de análisis:", [3, 7, 15, 30])
-        ejecutar_auditoria = st.button("🔍 Ejecutar Auditoría", type="primary", use_container_width=True)
+        
+        col_a, col_b, col_c = st.columns([1, 1, 2])  # col_c vacía para empujar hacia la izquierda
+        with col_a:
+            dias_auditoria = st.selectbox("Período de análisis:", [3, 7, 15, 30])
+        with col_b:
+            st.write("")  # alinea la altura
+            ejecutar_auditoria = st.button("🔍 Ejecutar Auditoría", type="primary", use_container_width=True)
         
         if ejecutar_auditoria:
             hoy = datetime.date.today()
