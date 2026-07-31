@@ -968,7 +968,7 @@ if st.session_state.df_mlb is not None:
         with col1:
             dias_auditoria = st.selectbox("Período de análisis:", [3, 7, 15, 30])
         with col2:
-            st.write("")  # espacio para igualar la altura de la etiqueta
+            st.write(" ")  # espacio para igualar la altura de la etiqueta
             ejecutar_auditoria = st.button("🔍 Ejecutar Auditoría", type="primary", use_container_width=True)
         
         if ejecutar_auditoria:
