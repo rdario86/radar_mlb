@@ -609,6 +609,7 @@ def get_strikeout_hunters(fecha_hoy):
         # --- FIN NUEVO ORDEN ---
     except Exception:
         return []
+        
 # --- INICIALIZACIÓN Y CONTROL DEL TIEMPO (MEDIANOCHE ET) ---
 if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
 
