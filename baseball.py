@@ -593,21 +593,22 @@ def get_strikeout_hunters(fecha_hoy):
                 
         pitchers_data.sort(key=lambda x: (x['score'], x['⚾ Abridor']), reverse=True)
         top_4 = pitchers_data[:4]
+        # --- NUEVO ORDEN DE COLUMNAS ---
         nuevo_top4 = []
         for r in top_4:
-            meta_str = f"{r['🎯 Proy. Ponches']} Ks"
-            prob_str = f"{r['prob_meta']}%"
             nuevo_top4.append({
                 "⚾ Abridor": r["⚾ Abridor"],
                 "👕 Equipo": r["👕 Equipo"],
                 "⚔️ Rival": r["⚔️ Rival"],
                 "🔥 K/9 (L7)": r["🔥 K/9 (L7)"],
-                "🎯 Proy. Ponches": meta_str,
-                "🎲 Prob. Alcanzar Proy.": prob_str,
+                "🎯 Proy. Ponches": f"{r['🎯 Proy. Ponches']} Ks",
+                "🎲 Prob. Alcanzar Proy.": f"{r['prob_meta']}%",
                 "📝 Evaluación": r["📝 Evaluación"]
             })
         return nuevo_top4
-
+        # --- FIN NUEVO ORDEN ---
+    except Exception:
+        return []
 # --- INICIALIZACIÓN Y CONTROL DEL TIEMPO (MEDIANOCHE ET) ---
 if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
 
