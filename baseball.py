@@ -679,12 +679,13 @@ if st.session_state.df_mlb is not None:
         clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df_filtrado[['Elo_L', 'Elo_V']], df_filtrado['Win'])
     
     # --- ACTUALIZACIÓN DE PESTAÑAS (Agregada tab 4) ---
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📅 Cartelera del Día",
     "💣 Caza-Jonrones",
     "🔥 Caza-Ponches",
     "🔹 Caza-Hits",
-    "🧮 Calculadora +EV"
+    "🧮 Calculadora +EV",
+    "📊 Auditoría Histórica"
 ])
     
     with tab1:
@@ -958,3 +959,137 @@ if st.session_state.df_mlb is not None:
             else:
                 col2.metric("Valor Esperado (EV)", f"{ev_pct_int}%", "No Rentable (-EV)", delta_color="inverse")
                 st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita_int}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")
+
+    with tab6:
+        st.markdown("### 📊 Auditoría Histórica de Efectividad")
+        st.markdown("Evalúa el rendimiento del radar en un rango de días pasados.")
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            dias_auditoria = st.selectbox("Período de análisis:", [3, 7, 15, 30])
+        with col2:
+            ejecutar_auditoria = st.button("🔍 Ejecutar Auditoría", type="primary", use_container_width=True)
+        
+        if ejecutar_auditoria:
+            hoy = datetime.date.today()
+            fechas_auditar = []
+            for i in range(dias_auditoria):
+                fecha = hoy - datetime.timedelta(days=i+1)
+                fechas_auditar.append(fecha.strftime('%Y-%m-%d'))
+            
+            resultados = []
+            barra_progreso = st.progress(0)
+            
+            for idx, fecha_str in enumerate(fechas_auditar):
+                st.write(f"⏳ Procesando {fecha_str}...")
+                
+                # Verificar juegos finalizados ese día
+                juegos_dia = statsapi.schedule(date=fecha_str, sportId=1)
+                if not any(j['status'] in ['Final', 'Game Over'] for j in juegos_dia):
+                    continue
+                
+                # Datos históricos hasta el día anterior
+                df_filtrado_aud = df_historico[df_historico['Date'] < fecha_str].copy()
+                if len(df_filtrado_aud) == 0:
+                    continue
+                
+                # Entrenar modelo
+                df_filtrado_aud['Win'] = (df_filtrado_aud['Carreras_Local'] > df_filtrado_aud['Carreras_Visitante']).astype(int)
+                clf_aud = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42)
+                clf_aud.fit(df_filtrado_aud[['Elo_L', 'Elo_V']], df_filtrado_aud['Win'])
+                
+                # Ganadores
+                aciertos_gan = 0
+                total_gan = 0
+                for juego in juegos_dia:
+                    if juego['status'] not in ['Final', 'Game Over']: continue
+                    e_local = juego['home_name']
+                    e_visita = juego['away_name']
+                    if e_local not in MLB_TEAM_WHITELIST or e_visita not in MLB_TEAM_WHITELIST: continue
+                    
+                    p_local, p_visita = get_starting_pitchers(juego)
+                    elo_l = df_filtrado_aud[df_filtrado_aud['Local'] == e_local].tail(1)['Elo_L'].values[0] if len(df_filtrado_aud[df_filtrado_aud['Local'] == e_local]) > 0 else 1500
+                    elo_v = df_filtrado_aud[df_filtrado_aud['Visitante'] == e_visita].tail(1)['Elo_V'].values[0] if len(df_filtrado_aud[df_filtrado_aud['Visitante'] == e_visita]) > 0 else 1500
+                    elo_l += 35
+                    
+                    racha_l = get_recent_form(e_local, df_filtrado_aud)
+                    racha_v = get_recent_form(e_visita, df_filtrado_aud)
+                    h2h = get_h2h_wins(e_local, e_visita, df_filtrado_aud)
+                    luck_l = get_pythagorean_luck(e_local, df_filtrado_aud)
+                    luck_v = get_pythagorean_luck(e_visita, df_filtrado_aud)
+                    split_l, split_v = get_splits_win_pct(e_local, e_visita, df_filtrado_aud)
+                    whip_l = get_pitcher_whip(p_local, fecha_str)
+                    whip_v = get_pitcher_whip(p_visita, fecha_str)
+                    
+                    prob = clf_aud.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
+                    pitcher_adj = (whip_v - whip_l) * 0.15
+                    prob_final_local = (prob + (racha_l - racha_v)*PESO_RACHA + (h2h - 0.5)*PESO_H2H +
+                                        (luck_l - luck_v)*PESO_PITAGORICO + (split_l - split_v)*PESO_SPLITS + pitcher_adj)
+                    ganador = e_local if prob_final_local > 0.5 else e_visita
+                    
+                    r_local = juego.get('home_score', 0)
+                    r_visita = juego.get('away_score', 0)
+                    r_ganador = e_local if r_local > r_visita else e_visita
+                    
+                    if r_ganador == ganador: aciertos_gan += 1
+                    total_gan += 1
+                
+                # HR
+                hr_data = get_hr_hunters(anio_sel, fecha_str)
+                aciertos_hr = sum(1 for h in hr_data if '✅' in h['📝 Evaluación'])
+                fallos_hr = sum(1 for h in hr_data if '❌' in h['📝 Evaluación'])
+                total_hr = aciertos_hr + fallos_hr
+                
+                # Ponches
+                k_data = get_strikeout_hunters(fecha_str)
+                aciertos_k = sum(1 for k in k_data if '✅' in k['📝 Evaluación'])
+                fallos_k = sum(1 for k in k_data if '❌' in k['📝 Evaluación'])
+                total_k = aciertos_k + fallos_k
+                
+                # Hits
+                hits_data = get_hit_hunters(anio_sel, fecha_str)
+                aciertos_hits = sum(1 for h in hits_data if '✅' in h['📝 Evaluación'])
+                fallos_hits = sum(1 for h in hits_data if '❌' in h['📝 Evaluación'])
+                total_hits = aciertos_hits + fallos_hits
+                
+                resultados.append({
+                    "Fecha": fecha_str,
+                    "Ganadores": f"{aciertos_gan}/{total_gan}",
+                    "HR": f"{aciertos_hr}/{total_hr}",
+                    "Ponches": f"{aciertos_k}/{total_k}",
+                    "Hits": f"{aciertos_hits}/{total_hits}",
+                    "Efect. Ganadores (%)": round(aciertos_gan/total_gan*100, 1) if total_gan else 0,
+                    "Efect. HR (%)": round(aciertos_hr/total_hr*100, 1) if total_hr else 0,
+                    "Efect. Ponches (%)": round(aciertos_k/total_k*100, 1) if total_k else 0,
+                    "Efect. Hits (%)": round(aciertos_hits/total_hits*100, 1) if total_hits else 0
+                })
+                
+                barra_progreso.progress((idx + 1) / len(fechas_auditar))
+                time.sleep(0.5)  # Respetar API
+            
+            barra_progreso.empty()
+            
+            if resultados:
+                df_aud = pd.DataFrame(resultados)
+                st.markdown("### 📈 Resultados Diarios")
+                st.dataframe(df_aud, use_container_width=True, hide_index=True)
+                
+                # Resumen acumulado
+                total_gan_acc = sum(int(r["Ganadores"].split('/')[0]) for r in resultados)
+                total_gan_eval = sum(int(r["Ganadores"].split('/')[1]) for r in resultados)
+                total_hr_acc = sum(int(r["HR"].split('/')[0]) for r in resultados)
+                total_hr_eval = sum(int(r["HR"].split('/')[1]) for r in resultados)
+                total_k_acc = sum(int(r["Ponches"].split('/')[0]) for r in resultados)
+                total_k_eval = sum(int(r["Ponches"].split('/')[1]) for r in resultados)
+                total_hits_acc = sum(int(r["Hits"].split('/')[0]) for r in resultados)
+                total_hits_eval = sum(int(r["Hits"].split('/')[1]) for r in resultados)
+                
+                st.markdown("---")
+                st.markdown("### 📊 Resumen Acumulado del Período")
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Ganadores", f"{total_gan_acc}/{total_gan_eval}", f"{round(total_gan_acc/total_gan_eval*100,1)}%" if total_gan_eval else "0%")
+                col2.metric("Jonrones", f"{total_hr_acc}/{total_hr_eval}", f"{round(total_hr_acc/total_hr_eval*100,1)}%" if total_hr_eval else "0%")
+                col3.metric("Ponches", f"{total_k_acc}/{total_k_eval}", f"{round(total_k_acc/total_k_eval*100,1)}%" if total_k_eval else "0%")
+                col4.metric("Hits (1+)", f"{total_hits_acc}/{total_hits_eval}", f"{round(total_hits_acc/total_hits_eval*100,1)}%" if total_hits_eval else "0%")
+            else:
+                st.warning("No se encontraron juegos finalizados en el período seleccionado.")
