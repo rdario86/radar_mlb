@@ -350,7 +350,7 @@ def get_hr_hunters(anio, fecha_hoy):
         return []
 
 def get_hit_hunters(anio, fecha_hoy):
-    """Devuelve los 4 bateadores con mayor probabilidad de dar 2+ hits hoy, con evaluación."""
+    """Devuelve los 4 bateadores con mayor probabilidad de dar al menos 1 hit hoy."""
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
         equipos_hoy = {}
@@ -414,22 +414,30 @@ def get_hit_hunters(anio, fecha_hoy):
                             hits_hoy_real += int(game.get('stat', {}).get('hits', 0))
                             ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
 
-            if dio_2hits_ayer: continue   # <--- Filtro anti‑racha
+            # Filtro anti‑racha: si ayer dio 2+ hits, lo descartamos
+            if dio_2hits_ayer: continue
+
+            # Si el partido terminó y no jugó, lo excluimos
+            if game_status in ['Final', 'Game Over'] and ab_hoy_real == 0: continue
 
             season_hits = max(0, season_hits - hits_hoy_real)
             season_ab = max(1, season_ab - ab_hoy_real)
             l10_ab = max(1, l10_ab)
 
+            # Promedio de bateo combinado
             avg_index = (season_hits / season_ab * 0.3) + (l10_hits / l10_ab * 0.7)
-            prob_2plus = 1 - binom.cdf(1, 4, avg_index)
-            prob_2plus_pct = int(round(prob_2plus * 100))
+
+            # *** NUEVO: probabilidad de al menos 1 hit en 4 turnos ***
+            prob_1hit = 1 - (1 - avg_index) ** 4
+            prob_1hit_pct = int(round(prob_1hit * 100))
 
             eval_str = "⏳ Pendiente"
             if game_status in ['Final', 'Game Over']:
                 if ab_hoy_real == 0:
                     eval_str = "🚫 No jugó"
                 else:
-                    eval_str = "✅ Acierto" if hits_hoy_real >= 2 else "❌ Fallo"
+                    # Acierto si dio al menos 1 hit
+                    eval_str = "✅ Acierto" if hits_hoy_real >= 1 else "❌ Fallo"
 
             resultados.append({
                 "⚾ Bateador": p_name,
@@ -437,9 +445,9 @@ def get_hit_hunters(anio, fecha_hoy):
                 "🏟️ Condición": condicion,
                 "📊 AVG Temp.": f"{season_hits / season_ab:.3f}" if season_ab > 0 else ".000",
                 "🔥 AVG L10": f"{l10_hits / l10_ab:.3f}" if l10_ab > 0 else ".000",
-                "🎯 Prob. 2+ Hits": f"{prob_2plus_pct}%",
+                "🎯 Prob. 1+ Hit": f"{prob_1hit_pct}%",   # nombre de columna cambiado
                 "📝 Evaluación": eval_str,
-                "score": prob_2plus
+                "score": prob_1hit
             })
 
         resultados.sort(key=lambda x: x['score'], reverse=True)
@@ -846,7 +854,7 @@ if st.session_state.df_mlb is not None:
             st.info("Presiona el botón para cazar ponches del día.")
                 
     with tab4:
-        st.markdown("### 🔹 Radar de Hits: Probabilidad de 2+ Imparables")
+        st.markdown("### 🔹 Radar de Hits: Probabilidad de 1+ Imparables")
         if st.button("🔎 Buscar Bateadores con 2+ Hits (Top 4)", type="primary", use_container_width=True):
             with st.spinner("Calculando probabilidades de multi-hit..."):
                 resultados_hits = get_hit_hunters(anio_sel, st.session_state.fecha_hoy)
