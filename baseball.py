@@ -412,7 +412,7 @@ def get_hit_hunters(anio, fecha_hoy):
             season_ab = 1; season_hits = 0
             l10_hits = 0; l10_ab = 0
             hits_hoy_real = 0; ab_hoy_real = 0
-            dio_2hits_ayer = False
+            dio_1hits_ayer = False
 
             for block in stats_blocks:
                 if block.get('type', {}).get('displayName') == 'season':
@@ -426,7 +426,7 @@ def get_hit_hunters(anio, fecha_hoy):
                     for game in valid_splits[:10]:
                         g_stats = game.get('stat', {})
                         if game.get('date', '') == fecha_ayer_str and int(g_stats.get('hits', 0)) >= 2:
-                            dio_2hits_ayer = True
+                            dio_1hits_ayer = True
                         l10_hits += int(g_stats.get('hits', 0))
                         l10_ab += int(g_stats.get('atBats', 0))
 
@@ -436,7 +436,7 @@ def get_hit_hunters(anio, fecha_hoy):
                             ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
 
             # Filtro anti‑racha: si ayer dio 1+ hits, lo descartamos
-            if dio_2hits_ayer: continue
+            if dio_1hits_ayer: continue
 
             # Si el partido terminó y no jugó, lo excluimos
             if game_status in ['Final', 'Game Over'] and ab_hoy_real == 0: continue
@@ -896,10 +896,10 @@ if st.session_state.df_mlb is not None:
 
             if total_evaluados > 0:
                 efectividad = (aciertos / total_evaluados) * 100
-                st.markdown("### 📊 Rendimiento Caza-Hits (2+ Imparables)")
+                st.markdown("### 📊 Rendimiento Caza-Hits (1+ Imparables)")
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Bateadores Evaluados", total_evaluados)
-                c2.metric("Aciertos (2+ Hits)", aciertos)
+                c2.metric("Aciertos (1+ Hits)", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
         elif clave_hits not in st.session_state:
             st.info("Presiona el botón para buscar bateadores con alta probabilidad de 1+ hits.")
