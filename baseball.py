@@ -970,29 +970,25 @@ if st.session_state.df_mlb is not None:
 
             resultados = []
             barra_progreso = st.progress(0)
-            estado = st.empty()  # placeholder único para el avance
+            estado = st.empty()
 
             for idx, fecha_str in enumerate(fechas_auditar):
                 estado.write(f"⏳ Procesando {fecha_str}...")
 
-                # Verificar juegos finalizados ese día
                 juegos_dia = statsapi.schedule(date=fecha_str, sportId=1)
                 if not any(j['status'] in ['Final', 'Game Over'] for j in juegos_dia):
                     barra_progreso.progress((idx + 1) / len(fechas_auditar))
                     continue
 
-                # Datos históricos hasta el día anterior
                 df_filtrado_aud = df_historico[df_historico['Date'] < fecha_str].copy()
                 if len(df_filtrado_aud) == 0:
                     barra_progreso.progress((idx + 1) / len(fechas_auditar))
                     continue
 
-                # Entrenar modelo
                 df_filtrado_aud['Win'] = (df_filtrado_aud['Carreras_Local'] > df_filtrado_aud['Carreras_Visitante']).astype(int)
                 clf_aud = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42)
                 clf_aud.fit(df_filtrado_aud[['Elo_L', 'Elo_V']], df_filtrado_aud['Win'])
 
-                # Ganadores
                 aciertos_gan = 0
                 total_gan = 0
                 for juego in juegos_dia:
@@ -1028,7 +1024,6 @@ if st.session_state.df_mlb is not None:
                     if r_ganador == ganador: aciertos_gan += 1
                     total_gan += 1
 
-                # HR, Ponches, Hits
                 hr_data = get_hr_hunters(anio_sel, fecha_str)
                 aciertos_hr = sum(1 for h in hr_data if '✅' in h['📝 Evaluación'])
                 fallos_hr = sum(1 for h in hr_data if '❌' in h['📝 Evaluación'])
@@ -1057,17 +1052,22 @@ if st.session_state.df_mlb is not None:
                 })
 
                 barra_progreso.progress((idx + 1) / len(fechas_auditar))
-                time.sleep(0.2)  # pausa reducida
+                time.sleep(0.2)
 
             estado.empty()
             barra_progreso.empty()
 
+            # Guardar en session_state para persistencia
+            st.session_state.auditoria_7dias = resultados
+
+        # Mostrar resultados guardados (incluso al cambiar de pestaña)
+        if "auditoria_7dias" in st.session_state and st.session_state.auditoria_7dias:
+            resultados = st.session_state.auditoria_7dias
             if resultados:
                 df_aud = pd.DataFrame(resultados)
                 st.markdown("### 📈 Resultados Diarios")
                 st.dataframe(df_aud, use_container_width=True, hide_index=True)
 
-                # Resumen acumulado
                 total_gan_acc = sum(int(r["Ganadores"].split('/')[0]) for r in resultados)
                 total_gan_eval = sum(int(r["Ganadores"].split('/')[1]) for r in resultados)
                 total_hr_acc = sum(int(r["HR"].split('/')[0]) for r in resultados)
