@@ -696,7 +696,7 @@ if st.session_state.df_mlb is not None:
                 st.error("No hay suficientes datos históricos previos a esta fecha para entrenar el modelo.")
                 st.session_state.resultados_jornada = None
             else:
-                with st.spinner("Escaneando predicciones ciegas y verificando con resultados reales..."):
+                with st.spinner("Escaneando predicciones y verificando con resultados reales..."):
                     juegos_hoy = statsapi.schedule(date=st.session_state.fecha_hoy, sportId=1)
 
                     if not juegos_hoy:
@@ -784,7 +784,7 @@ if st.session_state.df_mlb is not None:
 
                         resultados_jornada.sort(key=lambda x: x['raw_time'])
                         st.session_state.resultados_jornada = resultados_jornada
-                        st.success("✅ Análisis completado. Resultados guardados.")
+                        st.success("✅ Análisis completado. Lanzadores con WHIP de sus últimos 7 juegos. Resultados guardados.")
 
         # --- Mostrar resultados almacenados (persiste al cambiar de pestaña) ---
         if "resultados_jornada" in st.session_state and st.session_state.resultados_jornada is not None:
