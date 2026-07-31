@@ -966,25 +966,25 @@ if st.session_state.df_mlb is not None:
 
         if st.button("🔍 Ejecutar Auditoría (7 días)", type="primary", use_container_width=True):
             hoy = datetime.date.today()
-            fechas_auditar = []
-            for i in range(7):
-                fecha = hoy - datetime.timedelta(days=i+1)
-                fechas_auditar.append(fecha.strftime('%Y-%m-%d'))
+            fechas_auditar = [(hoy - datetime.timedelta(days=i+1)).strftime('%Y-%m-%d') for i in range(7)]
 
             resultados = []
             barra_progreso = st.progress(0)
+            estado = st.empty()  # placeholder único para el avance
 
             for idx, fecha_str in enumerate(fechas_auditar):
-                st.write(f"⏳ Procesando {fecha_str}...")
+                estado.write(f"⏳ Procesando {fecha_str}...")
 
                 # Verificar juegos finalizados ese día
                 juegos_dia = statsapi.schedule(date=fecha_str, sportId=1)
                 if not any(j['status'] in ['Final', 'Game Over'] for j in juegos_dia):
+                    barra_progreso.progress((idx + 1) / len(fechas_auditar))
                     continue
 
                 # Datos históricos hasta el día anterior
                 df_filtrado_aud = df_historico[df_historico['Date'] < fecha_str].copy()
                 if len(df_filtrado_aud) == 0:
+                    barra_progreso.progress((idx + 1) / len(fechas_auditar))
                     continue
 
                 # Entrenar modelo
@@ -1028,19 +1028,17 @@ if st.session_state.df_mlb is not None:
                     if r_ganador == ganador: aciertos_gan += 1
                     total_gan += 1
 
-                # HR
+                # HR, Ponches, Hits
                 hr_data = get_hr_hunters(anio_sel, fecha_str)
                 aciertos_hr = sum(1 for h in hr_data if '✅' in h['📝 Evaluación'])
                 fallos_hr = sum(1 for h in hr_data if '❌' in h['📝 Evaluación'])
                 total_hr = aciertos_hr + fallos_hr
 
-                # Ponches
                 k_data = get_strikeout_hunters(fecha_str)
                 aciertos_k = sum(1 for k in k_data if '✅' in k['📝 Evaluación'])
                 fallos_k = sum(1 for k in k_data if '❌' in k['📝 Evaluación'])
                 total_k = aciertos_k + fallos_k
 
-                # Hits
                 hits_data = get_hit_hunters(anio_sel, fecha_str)
                 aciertos_hits = sum(1 for h in hits_data if '✅' in h['📝 Evaluación'])
                 fallos_hits = sum(1 for h in hits_data if '❌' in h['📝 Evaluación'])
@@ -1059,8 +1057,9 @@ if st.session_state.df_mlb is not None:
                 })
 
                 barra_progreso.progress((idx + 1) / len(fechas_auditar))
-                time.sleep(0.5)
+                time.sleep(0.2)  # pausa reducida
 
+            estado.empty()
             barra_progreso.empty()
 
             if resultados:
