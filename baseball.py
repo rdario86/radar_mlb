@@ -673,7 +673,7 @@ if st.session_state.df_mlb is not None:
     "📅 Cartelera del Día",
     "💣 Caza-Jonrones",
     "🔥 Caza-Ponches",
-    "🔹 Caza-Hits (2+ Hits)",
+    "🔹 Caza-Hits",
     "🧮 Calculadora +EV"
 ])
     
