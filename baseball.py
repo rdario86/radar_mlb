@@ -371,7 +371,8 @@ def get_hr_hunters(anio, fecha_hoy):
         return []
 
 def get_hit_hunters(anio, fecha_hoy):
-    """Devuelve los 4 bateadores con mayor probabilidad de dar al menos 1 hit hoy."""
+    """Devuelve los 4 bateadores con mayor probabilidad de dar al menos 1 hit hoy,
+       excluyendo a los que conectaron hit(s) el día anterior."""
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
         equipos_hoy = {}
@@ -412,7 +413,7 @@ def get_hit_hunters(anio, fecha_hoy):
             season_ab = 1; season_hits = 0
             l10_hits = 0; l10_ab = 0
             hits_hoy_real = 0; ab_hoy_real = 0
-            dio_1hits_ayer = False
+            dio_hit_ayer = False   # ← nuevo flag
 
             for block in stats_blocks:
                 if block.get('type', {}).get('displayName') == 'season':
@@ -425,8 +426,9 @@ def get_hit_hunters(anio, fecha_hoy):
 
                     for game in valid_splits[:10]:
                         g_stats = game.get('stat', {})
-                        if game.get('date', '') == fecha_ayer_str and int(g_stats.get('hits', 0)) >= 2:
-                            dio_1hits_ayer = True
+                        # Si ayer dio al menos 1 hit (de cualquier tipo) → lo excluimos
+                        if game.get('date', '') == fecha_ayer_str and int(g_stats.get('hits', 0)) >= 1:
+                            dio_hit_ayer = True
                         l10_hits += int(g_stats.get('hits', 0))
                         l10_ab += int(g_stats.get('atBats', 0))
 
@@ -435,8 +437,8 @@ def get_hit_hunters(anio, fecha_hoy):
                             hits_hoy_real += int(game.get('stat', {}).get('hits', 0))
                             ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
 
-            # Filtro anti‑racha: si ayer dio 1+ hits, lo descartamos
-            if dio_1hits_ayer: continue
+            # Filtro anti‑racha: si ayer dio al menos 1 hit, lo descartamos
+            if dio_hit_ayer: continue
 
             # Si el partido terminó y no jugó, lo excluimos
             if game_status in ['Final', 'Game Over'] and ab_hoy_real == 0: continue
@@ -448,7 +450,7 @@ def get_hit_hunters(anio, fecha_hoy):
             # Promedio de bateo combinado
             avg_index = (season_hits / season_ab * 0.3) + (l10_hits / l10_ab * 0.7)
 
-            # *** NUEVO: probabilidad de al menos 1 hit en 4 turnos ***
+            # Probabilidad de al menos 1 hit en 4 turnos
             prob_1hit = 1 - (1 - avg_index) ** 4
             prob_1hit_pct = int(round(prob_1hit * 100))
 
@@ -457,7 +459,6 @@ def get_hit_hunters(anio, fecha_hoy):
                 if ab_hoy_real == 0:
                     eval_str = "🚫 No jugó"
                 else:
-                    # Acierto si dio al menos 1 hit
                     eval_str = "✅ Acierto" if hits_hoy_real >= 1 else "❌ Fallo"
 
             resultados.append({
@@ -466,7 +467,7 @@ def get_hit_hunters(anio, fecha_hoy):
                 "🏟️ Condición": condicion,
                 "📊 AVG Temp.": f"{season_hits / season_ab:.3f}" if season_ab > 0 else ".000",
                 "🔥 AVG L10": f"{l10_hits / l10_ab:.3f}" if l10_ab > 0 else ".000",
-                "🎯 Prob. 1+ Hit": f"{prob_1hit_pct}%",   # nombre de columna cambiado
+                "🎯 Prob. 1+ Hit": f"{prob_1hit_pct}%",
                 "📝 Evaluación": eval_str,
                 "score": prob_1hit
             })
