@@ -9,14 +9,12 @@ from sklearn.ensemble import RandomForestClassifier
 from scipy.stats import poisson
 from scipy.stats import binom
 
-# --- CONFIGURACIÓN ---
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
 st.markdown("Proyección Sabermétrica")
 st.markdown("---")
 
-# --- PARÁMETROS SABERMÉTRICOS FIJOS ---
 MAX_DEPTH_ELO = 5       
 PESO_RACHA = 0.08       
 PESO_H2H = 0.12         
@@ -35,7 +33,6 @@ MLB_TEAM_WHITELIST = [
     "Toronto Blue Jays", "Washington Nationals"
 ]
 
-# --- FUNCIONES DE APOYO ---
 def get_recent_form(team, df, n=10):
     team_games = df[(df['Local'] == team) | (df['Visitante'] == team)].tail(n)
     if len(team_games) == 0: return 0.5
@@ -181,7 +178,6 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
     except: return avg_whip
 
 def get_pitcher_hand(pitcher_name):
-    """Devuelve 'R', 'L' o 'U' según la mano de lanzar del pitcher."""
     if not pitcher_name or pitcher_name == 'TBD':
         return 'U'
     try:
@@ -196,7 +192,6 @@ def get_pitcher_hand(pitcher_name):
         return 'U'
 
 def get_hr_hunters(anio, fecha_hoy):
-    # Park Factors actualizados (promedio 2024‑2025)
     PARK_HR_FACTORS = {
         "Arizona Diamondbacks": 1.08, "Atlanta Braves": 1.02, "Baltimore Orioles": 1.10,
         "Boston Red Sox": 1.06, "Chicago Cubs": 0.96, "Chicago White Sox": 1.00,
@@ -242,7 +237,6 @@ def get_hr_hunters(anio, fecha_hoy):
         ayer_dt = datetime.datetime.strptime(fecha_hoy, '%Y-%m-%d') - datetime.timedelta(days=1)
         fecha_ayer_str = ayer_dt.strftime('%Y-%m-%d')
 
-        # Cache de manos de pitchers
         pitcher_hand_cache = {}
 
         for p in jugadores_activos:
@@ -253,7 +247,6 @@ def get_hr_hunters(anio, fecha_hoy):
             team_id = p.get('team_id')
             game_status = p.get('game_status', '')
 
-            # Obtener juego y pitcher rival
             juego = team_game_map.get(team_id)
             opposing_pitcher = None
             if juego:
@@ -295,7 +288,6 @@ def get_hr_hunters(anio, fecha_hoy):
                             hr_hoy_real += int(game.get('stat', {}).get('homeRuns', 0))
                             ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
 
-            # Filtros
             if dio_jonron_ayer: continue
             if game_status in ['Final', 'Game Over'] and ab_hoy_real == 0: continue
 
@@ -303,10 +295,8 @@ def get_hr_hunters(anio, fecha_hoy):
             season_ab = max(1, season_ab - ab_hoy_real)
             l10_ab = max(1, l10_ab)
 
-            # Índice base
             hr_index = ((season_hr / season_ab * 0.3) + (l10_hr / l10_ab * 0.7)) * (1.10 if condicion == 'Local' else 1.0)
 
-            # 1. Ajuste por mano del lanzador (platoon)
             factor_platoon = 1.0
             if opposing_pitcher and opposing_pitcher != 'TBD':
                 if opposing_pitcher not in pitcher_hand_cache:
@@ -321,14 +311,12 @@ def get_hr_hunters(anio, fecha_hoy):
                             factor_platoon = 1.15
             hr_index *= factor_platoon
 
-            # 2. Ajuste por park factor del estadio local
             home_team_name = juego.get('home_name', '') if juego else ''
             park_factor = PARK_HR_FACTORS.get(home_team_name, 1.0)
             hr_index *= park_factor
 
             hr_index_rounded = round(hr_index, 4)
 
-            # Probabilidad de al menos 1 HR en 4 turnos
             prob_hr_game = 1 - (1 - hr_index) ** 4
             prob_hr_pct = int(round(prob_hr_game * 100))
 
@@ -371,8 +359,6 @@ def get_hr_hunters(anio, fecha_hoy):
         return []
 
 def get_hit_hunters(anio, fecha_hoy):
-    """Devuelve los 4 bateadores con mayor probabilidad de dar al menos 1 hit hoy,
-       excluyendo a los que conectaron hit(s) el día anterior."""
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
         equipos_hoy = {}
@@ -413,7 +399,7 @@ def get_hit_hunters(anio, fecha_hoy):
             season_ab = 1; season_hits = 0
             l10_hits = 0; l10_ab = 0
             hits_hoy_real = 0; ab_hoy_real = 0
-            dio_hit_ayer = False   # ← nuevo flag
+            dio_hit_ayer = False
 
             for block in stats_blocks:
                 if block.get('type', {}).get('displayName') == 'season':
@@ -426,7 +412,6 @@ def get_hit_hunters(anio, fecha_hoy):
 
                     for game in valid_splits[:10]:
                         g_stats = game.get('stat', {})
-                        # Si ayer dio al menos 1 hit (de cualquier tipo) → lo excluimos
                         if game.get('date', '') == fecha_ayer_str and int(g_stats.get('hits', 0)) >= 1:
                             dio_hit_ayer = True
                         l10_hits += int(g_stats.get('hits', 0))
@@ -437,20 +422,16 @@ def get_hit_hunters(anio, fecha_hoy):
                             hits_hoy_real += int(game.get('stat', {}).get('hits', 0))
                             ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
 
-            # Filtro anti‑racha: si ayer dio al menos 1 hit, lo descartamos
             if dio_hit_ayer: continue
 
-            # Si el partido terminó y no jugó, lo excluimos
             if game_status in ['Final', 'Game Over'] and ab_hoy_real == 0: continue
 
             season_hits = max(0, season_hits - hits_hoy_real)
             season_ab = max(1, season_ab - ab_hoy_real)
             l10_ab = max(1, l10_ab)
 
-            # Promedio de bateo combinado
             avg_index = (season_hits / season_ab * 0.3) + (l10_hits / l10_ab * 0.7)
 
-            # Probabilidad de al menos 1 hit en 4 turnos
             prob_1hit = 1 - (1 - avg_index) ** 4
             prob_1hit_pct = int(round(prob_1hit * 100))
 
@@ -506,7 +487,7 @@ def get_strikeout_hunters(fecha_hoy):
                 stats_blocks = raw_data.get('people', [{}])[0].get('stats', [])
                 
                 l7_ks = 0; l7_outs = 0; juegos_lanzados = 0; ks_hoy_real = 0
-                ks_list = []  # Para la mediana
+                ks_list = []
                 
                 for block in stats_blocks:
                     if block.get('type', {}).get('displayName') == 'gameLog':
@@ -543,12 +524,9 @@ def get_strikeout_hunters(fecha_hoy):
                                 
                 if juegos_lanzados == 0 or l7_outs == 0: continue
 
-                # --- Mejoras ---
-                # 1. Mediana de Ks
                 ks_sorted = sorted(ks_list)
                 median_k = ks_sorted[len(ks_sorted)//2] if ks_sorted else 0
 
-                # 2. Factor del rival (raíz cuadrada)
                 team_raw = statsapi.get('teams', {'teamId': opp_id, 'hydrate': 'stats(group=[hitting],type=[season,gameLog])'})
                 opp_ks = 0; opp_pa = 1
                 try:
@@ -570,20 +548,16 @@ def get_strikeout_hunters(fecha_hoy):
                 opp_k_pct = opp_ks / opp_pa if opp_pa > 1 else 0.225
                 factor_rival = (opp_k_pct / 0.225) ** 0.5
 
-                # 3. Factor de IP
                 avg_ip = (l7_outs / 3.0) / juegos_lanzados
                 factor_ip = min(1.0, avg_ip / 6.0)
 
-                # Proyección final
                 proj_k = median_k * factor_rival * factor_ip
                 proj_k_rounded = round(proj_k, 3)
                 meta_ks = int(round(proj_k))
 
-                # Probabilidad de alcanzar la meta (Poisson)
                 prob_meta = 1 - poisson.cdf(meta_ks - 1, proj_k) if proj_k > 0 else 0.0
                 prob_meta_pct = int(round(prob_meta * 100))
 
-                # K/9 para la tabla
                 k9 = int(round((l7_ks / (l7_outs / 3.0)) * 9.0))
 
                 eval_str = "⏳ Pendiente"
@@ -607,7 +581,6 @@ def get_strikeout_hunters(fecha_hoy):
         pitchers_data.sort(key=lambda x: (x['score'], x['⚾ Abridor']), reverse=True)
         top_4 = pitchers_data[:4]
 
-        # Orden final de columnas
         nuevo_top4 = []
         for r in top_4:
             nuevo_top4.append({
@@ -623,7 +596,6 @@ def get_strikeout_hunters(fecha_hoy):
     except Exception:
         return []
         
-# --- INICIALIZACIÓN Y CONTROL DEL TIEMPO (MEDIANOCHE ET) ---
 if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
 
 st.sidebar.markdown("### 🗓️ Motor de Tiempo")
@@ -636,7 +608,6 @@ fecha_sel = st.sidebar.date_input("Fecha de Análisis:", hoy_et)
 st.session_state.fecha_hoy = fecha_sel.strftime('%Y-%m-%d')
 st.sidebar.markdown("---")
 
-# --- BARRA LATERAL: MOTOR DE DATOS ---
 st.sidebar.markdown("### 📥 Sincronización")
 anio_sel = datetime.datetime.now().year
 
@@ -682,7 +653,6 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
             st.sidebar.success("✅ Base de datos al día.")
         except Exception as e: st.sidebar.error(f"Error Crítico: {e}")
 
-# --- ÁREA PRINCIPAL ---
 if st.session_state.df_mlb is not None:
     df_historico = st.session_state.df_mlb.copy()
     df_filtrado = df_historico[df_historico['Date'] < st.session_state.fecha_hoy].copy()
@@ -691,7 +661,6 @@ if st.session_state.df_mlb is not None:
         df_filtrado['Win'] = (df_filtrado['Carreras_Local'] > df_filtrado['Carreras_Visitante']).astype(int)
         clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df_filtrado[['Elo_L', 'Elo_V']], df_filtrado['Win'])
     
-    # --- ACTUALIZACIÓN DE PESTAÑAS (Agregada tab 4) ---
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📅 Cartelera del Día",
     "💣 Caza-Jonrones",
@@ -704,7 +673,6 @@ if st.session_state.df_mlb is not None:
     with tab1:
         st.markdown(f"### 🎯 Partidos programados para el: **{st.session_state.fecha_hoy}**")
 
-        # Botón para generar/actualizar predicciones (siempre visible)
         if st.button("⚡ Analizar y Evaluar Cartelera", type="primary", use_container_width=True):
             if len(df_filtrado) == 0:
                 st.error("No hay suficientes datos históricos previos a esta fecha para entrenar el modelo.")
@@ -800,7 +768,6 @@ if st.session_state.df_mlb is not None:
                         st.session_state.resultados_jornada = resultados_jornada
                         st.success("✅ Análisis completado. Lanzadores con WHIP de sus últimos 7 juegos. Resultados guardados.")
 
-        # --- Mostrar resultados almacenados (persiste al cambiar de pestaña) ---
         if "resultados_jornada" in st.session_state and st.session_state.resultados_jornada is not None:
             resultados_jornada = st.session_state.resultados_jornada
             df_resultados = pd.DataFrame(resultados_jornada).drop(columns=['score', 'raw_time'], errors='ignore')
@@ -939,14 +906,11 @@ if st.session_state.df_mlb is not None:
             cuota_decimal = st.number_input("🏦 Cuota Decimal (ej. 1.91, 2.50)", min_value=1.01, value=1.91, step=0.01)
             
         if cuota_decimal > 1.0:
-            # Probabilidad implícita a partir de la cuota decimal
             prob_implicita = 1.0 / cuota_decimal
             
             prob_radar_dec = prob_radar / 100.0
-            # Valor esperado
             ev_pct = (prob_radar_dec * cuota_decimal) - 1.0
             
-            # Redondeo a enteros para mostrar
             prob_implicita_int = int(round(prob_implicita * 100))
             ev_pct_int = int(round(ev_pct * 100))
             
@@ -954,7 +918,6 @@ if st.session_state.df_mlb is not None:
             col1, col2, col3 = st.columns(3)
             col1.metric("Probabilidad que exige el Casino", f"{prob_implicita_int}%")
             
-            # ---- INDICADOR VISUAL SEGÚN EV ----
             if ev_pct >= 0.10:
                 st.toast('Apuesta de alto valor (+10% EV)', icon='💎')
                 st.success("💎 Apuesta de alto valor (+10% EV)")
@@ -965,7 +928,6 @@ if st.session_state.df_mlb is not None:
             else:
                 st.error("❌ Apuesta no rentable")
             
-            # Texto explicativo
             if ev_pct > 0:
                 col2.metric("Valor Esperado (EV)", f"+{ev_pct_int}%", "Rentable (+EV)")
                 st.success(f"✅ **¡Apuesta de Valor!** El radar le da **{prob_radar}%** de probabilidad de éxito, y la casa de apuestas te está cobrando como si solo tuviera **{prob_implicita_int}%**. Tienes ventaja matemática. Si repites esta apuesta 100 veces, ganarás dinero.")
@@ -1070,10 +1032,8 @@ if st.session_state.df_mlb is not None:
             estado.empty()
             barra_progreso.empty()
 
-            # Guardar en session_state para persistencia
             st.session_state.auditoria_7dias = resultados
 
-        # Mostrar resultados guardados (incluso al cambiar de pestaña)
         if "auditoria_7dias" in st.session_state and st.session_state.auditoria_7dias:
             resultados = st.session_state.auditoria_7dias
             if resultados:
