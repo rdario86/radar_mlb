@@ -506,6 +506,8 @@ def get_strikeout_hunters(fecha_hoy):
                 stats_blocks = raw_data.get('people', [{}])[0].get('stats', [])
                 
                 l7_ks = 0; l7_outs = 0; juegos_lanzados = 0; ks_hoy_real = 0
+                ks_list = []  # Para la mediana
+                
                 for block in stats_blocks:
                     if block.get('type', {}).get('displayName') == 'gameLog':
                         splits = block.get('splits', [])
@@ -517,7 +519,9 @@ def get_strikeout_hunters(fecha_hoy):
                         
                         for game in last_7:
                             g_stats = game.get('stat', {})
-                            l7_ks += int(g_stats.get('strikeOuts', 0))
+                            k = int(g_stats.get('strikeOuts', 0))
+                            l7_ks += k
+                            ks_list.append(k)
                             ip_str = str(g_stats.get('inningsPitched', '0.0'))
                             if '.' in ip_str:
                                 full, frac = ip_str.split('.')
@@ -525,7 +529,7 @@ def get_strikeout_hunters(fecha_hoy):
                             else: l7_outs += int(ip_str) * 3
                                 
                         ks_hoy_real = 0
-                        outs_hoy_real = 0   # nuevo
+                        outs_hoy_real = 0
                         for s in splits:
                             if s.get('date') == fecha_hoy:
                                 gs = s.get('stat', {})
@@ -538,14 +542,18 @@ def get_strikeout_hunters(fecha_hoy):
                                     outs_hoy_real += int(ip_str) * 3
                                 
                 if juegos_lanzados == 0 or l7_outs == 0: continue
-                avg_k_per_start = l7_ks / juegos_lanzados
-                
+
+                # --- Mejoras ---
+                # 1. Mediana de Ks
+                ks_sorted = sorted(ks_list)
+                median_k = ks_sorted[len(ks_sorted)//2] if ks_sorted else 0
+
+                # 2. Factor del rival (raíz cuadrada)
                 team_raw = statsapi.get('teams', {'teamId': opp_id, 'hydrate': 'stats(group=[hitting],type=[season,gameLog])'})
                 opp_ks = 0; opp_pa = 1
                 try:
                     t_stats_blocks = team_raw['teams'][0].get('teamStats', [])
                     ks_equipo_hoy = 0; pa_equipo_hoy = 0
-                    
                     for b in t_stats_blocks:
                         if b.get('type', {}).get('displayName') == 'season':
                             t_stats = b['splits'][0]['stat']
@@ -556,45 +564,50 @@ def get_strikeout_hunters(fecha_hoy):
                                 if t_game.get('date') == fecha_hoy:
                                     ks_equipo_hoy += int(t_game.get('stat', {}).get('strikeOuts', 0))
                                     pa_equipo_hoy += int(t_game.get('stat', {}).get('plateAppearances', 0))
-                    
                     opp_ks = max(0, opp_ks - ks_equipo_hoy)
                     opp_pa = max(1, opp_pa - pa_equipo_hoy)
                 except: pass
-                    
                 opp_k_pct = opp_ks / opp_pa if opp_pa > 1 else 0.225
-                proj_k = avg_k_per_start * (opp_k_pct / 0.225)
-                
-                proj_k_rounded = round(proj_k, 3) 
+                factor_rival = (opp_k_pct / 0.225) ** 0.5
+
+                # 3. Factor de IP
+                avg_ip = (l7_outs / 3.0) / juegos_lanzados
+                factor_ip = min(1.0, avg_ip / 6.0)
+
+                # Proyección final
+                proj_k = median_k * factor_rival * factor_ip
+                proj_k_rounded = round(proj_k, 3)
                 meta_ks = int(round(proj_k))
-                
-                # Nuevo: probabilidad de alcanzar o superar la proyección (Poisson)
-                if proj_k > 0:
-                    prob_meta = 1 - poisson.cdf(meta_ks - 1, proj_k)
-                else:
-                    prob_meta = 0.0
+
+                # Probabilidad de alcanzar la meta (Poisson)
+                prob_meta = 1 - poisson.cdf(meta_ks - 1, proj_k) if proj_k > 0 else 0.0
                 prob_meta_pct = int(round(prob_meta * 100))
-                
+
+                # K/9 para la tabla
+                k9 = int(round((l7_ks / (l7_outs / 3.0)) * 9.0))
+
                 eval_str = "⏳ Pendiente"
                 if g_status in ['Final', 'Game Over']:
-                    if outs_hoy_real == 0:          # No lanzó en el partido
+                    if outs_hoy_real == 0:
                         eval_str = "🚫 No lanzó"
                     else:
                         eval_str = f"✅ Acierto ({ks_hoy_real} Ks)" if ks_hoy_real >= meta_ks else f"❌ Fallo ({ks_hoy_real} Ks)"
-                
+
                 pitchers_data.append({
                     "⚾ Abridor": p_name,
                     "👕 Equipo": p_team,
                     "⚔️ Rival": opp_name,
-                    "🔥 K/9 (L7)": int(round((l7_ks / (l7_outs / 3.0)) * 9.0)),
-                    "🎯 Proy. Ponches": meta_ks, 
+                    "🔥 K/9 (L7)": k9,
+                    "🎯 Proy. Ponches": meta_ks,
                     "📝 Evaluación": eval_str,
                     "score": proj_k_rounded,
-                    "prob_meta": prob_meta_pct   # guardamos la probabilidad
+                    "prob_meta": prob_meta_pct
                 })
-                
+
         pitchers_data.sort(key=lambda x: (x['score'], x['⚾ Abridor']), reverse=True)
         top_4 = pitchers_data[:4]
-        # --- NUEVO ORDEN DE COLUMNAS ---
+
+        # Orden final de columnas
         nuevo_top4 = []
         for r in top_4:
             nuevo_top4.append({
@@ -607,7 +620,6 @@ def get_strikeout_hunters(fecha_hoy):
                 "📝 Evaluación": r["📝 Evaluación"]
             })
         return nuevo_top4
-        # --- FIN NUEVO ORDEN ---
     except Exception:
         return []
         
