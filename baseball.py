@@ -13,7 +13,7 @@ from scipy.stats import binom
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
-st.markdown("Proyección Sabermétrica")
+st.markdown("Proyección Sabermétrica y Evaluación de Relevistas (Bullpen)")
 st.markdown("---")
 
 MAX_DEPTH_ELO = 5       
@@ -177,7 +177,6 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
         return avg_whip
     except: return avg_whip
 
-# --- FUNCIÓN CORREGIDA: MÉTRICAS DEL BULLPEN CON WHIP ESTÁNDAR 1.30 ---
 def get_bullpen_metrics(team_id, fecha_corte):
     avg_whip = 1.30 
     if not team_id: return avg_whip
@@ -192,7 +191,8 @@ def get_bullpen_metrics(team_id, fecha_corte):
         
         if 'teams' not in raw_data or len(raw_data['teams']) == 0: return avg_whip
         
-        stats_blocks = raw_data['teams'][0].get('teamStats', [])
+        # FIX: Reemplazado 'teamStats' por 'stats' para extraer los datos reales de la API
+        stats_blocks = raw_data['teams'][0].get('stats', [])
         if not stats_blocks: return avg_whip
         
         splits = []
@@ -426,7 +426,8 @@ def get_strikeout_hunters(fecha_hoy):
                 
                 opp_ks = 0; opp_pa = 1
                 try:
-                    t_stats_blocks = team_raw['teams'][0].get('teamStats', [])
+                    # FIX: Reemplazado 'teamStats' por 'stats'
+                    t_stats_blocks = team_raw['teams'][0].get('stats', [])
                     ks_equipo_hoy = 0; pa_equipo_hoy = 0
                     for b in t_stats_blocks:
                         if b.get('type', {}).get('displayName') == 'season':
