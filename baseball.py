@@ -13,7 +13,7 @@ from scipy.stats import binom
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
-st.markdown("Proyección Sabermétrica y Evaluación de Relevistas (Bullpen)")
+st.markdown("Proyección Sabermétrica")
 st.markdown("---")
 
 MAX_DEPTH_ELO = 5       
