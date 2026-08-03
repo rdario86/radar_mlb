@@ -5,6 +5,7 @@ import statsapi
 import time
 import datetime
 import calendar
+import io  
 from sklearn.ensemble import RandomForestClassifier
 from scipy.stats import poisson
 from scipy.stats import binom
@@ -19,8 +20,7 @@ MAX_DEPTH_ELO = 5
 PESO_RACHA = 0.08       
 PESO_H2H = 0.12         
 PESO_PITAGORICO = 0.10  
-PESO_SPLITS = 0.10      
-LINEA_TOTALES = 8.5     
+PESO_SPLITS = 0.10         
 
 MLB_TEAM_WHITELIST = [
     "Arizona Diamondbacks", "Atlanta Braves", "Baltimore Orioles", "Boston Red Sox", 
@@ -415,6 +415,14 @@ def get_strikeout_hunters(fecha_hoy):
     except Exception:
         return []
         
+# --- FUNCION PARA GENERAR EXCEL EN MEMORIA ---
+def convertir_df_a_excel(df, sheet_name="Hoja1"):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name=sheet_name)
+    datos_procesados = output.getvalue()
+    return datos_procesados
+
 if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
 
 st.sidebar.markdown("### 🗓️ Motor de Tiempo")
@@ -608,13 +616,13 @@ if st.session_state.df_mlb is not None:
 
             st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
 
-            # --- NUEVO: BOTÓN DESCARGA CARTELERA CSV ---
-            csv_cartelera = df_resultados.to_csv(index=False).encode('utf-8-sig')
+            # --- BOTÓN DESCARGA EXCEL ---
+            excel_cartelera = convertir_df_a_excel(df_resultados, "Cartelera")
             st.download_button(
-                label="📥 Descargar Cartelera (CSV)",
-                data=csv_cartelera,
-                file_name=f"cartelera_mlb_{st.session_state.fecha_hoy}.csv",
-                mime="text/csv",
+                label="📥 Descargar Cartelera (Excel)",
+                data=excel_cartelera,
+                file_name=f"cartelera_mlb_{st.session_state.fecha_hoy}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
             total_evaluados = sum(1 for e in df_resultados['📝 Evaluación'] if '✅' in e or '❌' in e)
@@ -649,13 +657,13 @@ if st.session_state.df_mlb is not None:
             df_k_estilizado = df_k.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
             st.dataframe(df_k_estilizado, use_container_width=True, hide_index=True)
 
-            # --- NUEVO: BOTÓN DESCARGA PONCHES CSV ---
-            csv_ponches = df_k.to_csv(index=False).encode('utf-8-sig')
+            # --- BOTÓN DESCARGA EXCEL ---
+            excel_ponches = convertir_df_a_excel(df_k, "Ponches")
             st.download_button(
-                label="📥 Descargar Caza-Ponches (CSV)",
-                data=csv_ponches,
-                file_name=f"caza_ponches_{st.session_state.fecha_hoy}.csv",
-                mime="text/csv",
+                label="📥 Descargar Caza-Ponches (Excel)",
+                data=excel_ponches,
+                file_name=f"caza_ponches_{st.session_state.fecha_hoy}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
             total_evaluados = sum(1 for e in df_k['📝 Evaluación'] if '✅' in e or '❌' in e)
@@ -688,13 +696,13 @@ if st.session_state.df_mlb is not None:
             df_hits_estilizado = df_hits.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
             st.dataframe(df_hits_estilizado, use_container_width=True, hide_index=True)
 
-            # --- NUEVO: BOTÓN DESCARGA HITS CSV ---
-            csv_hits = df_hits.to_csv(index=False).encode('utf-8-sig')
+            # --- BOTÓN DESCARGA EXCEL ---
+            excel_hits = convertir_df_a_excel(df_hits, "Hits")
             st.download_button(
-                label="📥 Descargar Caza-Hits (CSV)",
-                data=csv_hits,
-                file_name=f"caza_hits_{st.session_state.fecha_hoy}.csv",
-                mime="text/csv",
+                label="📥 Descargar Caza-Hits (Excel)",
+                data=excel_hits,
+                file_name=f"caza_hits_{st.session_state.fecha_hoy}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
             total_evaluados = sum(1 for e in df_hits['📝 Evaluación'] if '✅' in e or '❌' in e)
@@ -849,13 +857,13 @@ if st.session_state.df_mlb is not None:
                 st.markdown("### 📈 Resultados Diarios")
                 st.dataframe(df_aud, use_container_width=True, hide_index=True)
                 
-                # --- NUEVO: BOTÓN DESCARGA AUDITORÍA CSV ---
-                csv_auditoria = df_aud.to_csv(index=False).encode('utf-8-sig')
+                # --- BOTÓN DESCARGA EXCEL ---
+                excel_auditoria = convertir_df_a_excel(df_aud, "Auditoria")
                 st.download_button(
-                    label="📥 Descargar Auditoría (CSV)",
-                    data=csv_auditoria,
-                    file_name="auditoria_7dias.csv",
-                    mime="text/csv",
+                    label="📥 Descargar Auditoría (Excel)",
+                    data=excel_auditoria,
+                    file_name="auditoria_7dias.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
 
                 total_gan_acc = sum(int(r["Ganadores"].split('/')[0]) for r in resultados)
