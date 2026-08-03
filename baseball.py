@@ -177,6 +177,71 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
         return avg_whip
     except: return avg_whip
 
+# --- NUEVA FUNCIÓN: MÉTRICAS DEL BULLPEN EN LOS ÚLTIMOS 7 DÍAS ---
+def get_bullpen_metrics(team_id, fecha_corte):
+    avg_whip = 1.35 
+    try:
+        raw_data = statsapi.get('teams', {'teamId': team_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
+        if 'teams' not in raw_data or len(raw_data['teams']) == 0: return avg_whip
+        
+        stats_blocks = raw_data['teams'][0].get('teamStats', [])
+        if not stats_blocks: return avg_whip
+        
+        splits = []
+        for b in stats_blocks:
+            if b.get('type', {}).get('displayName') == 'gameLog':
+                splits = b.get('splits', [])
+                break
+                
+        if not splits: return avg_whip
+        
+        dt_corte = datetime.datetime.strptime(fecha_corte, '%Y-%m-%d')
+        dt_7d = dt_corte - datetime.timedelta(days=7)
+        dt_3d = dt_corte - datetime.timedelta(days=3)
+        
+        str_7d = dt_7d.strftime('%Y-%m-%d')
+        str_3d = dt_3d.strftime('%Y-%m-%d')
+        
+        total_hits_7d = 0; total_bb_7d = 0; total_outs_7d = 0
+        bp_outs_3d = 0
+        
+        for s in splits:
+            game_date = s.get('date', '')
+            if str_7d <= game_date < fecha_corte:
+                stt = s.get('stat', {})
+                hits = int(stt.get('hits', 0))
+                bb = int(stt.get('baseOnBalls', 0))
+                
+                ip_str = str(stt.get('inningsPitched', '0.0'))
+                if '.' in ip_str:
+                    full, frac = ip_str.split('.')
+                    outs = (int(full) * 3) + int(frac)
+                else:
+                    outs = int(ip_str) * 3
+                    
+                total_hits_7d += hits
+                total_bb_7d += bb
+                total_outs_7d += outs
+                
+                # Medidor de Fatiga (Últimos 3 días)
+                if str_3d <= game_date < fecha_corte:
+                    # Asumimos que los primeros 15 outs (5 innings) son del abridor. 
+                    # El resto es carga de trabajo pura del bullpen.
+                    bp_outs = max(0, outs - 15)
+                    bp_outs_3d += bp_outs
+                    
+        if total_outs_7d == 0: return avg_whip
+        
+        whip_7d = (total_hits_7d + total_bb_7d) / (total_outs_7d / 3.0)
+        
+        # Penalización por Fatiga: Si el bullpen lanzó más de 45 outs en los últimos 3 días.
+        fatigue_mod = 1.0
+        if bp_outs_3d > 45:
+            fatigue_mod = 1.0 + ((bp_outs_3d - 45) * 0.005) # Sube el WHIP proyectado
+            
+        return round(whip_7d * fatigue_mod, 2)
+    except: return avg_whip
+
 def get_hit_hunters(anio, fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
@@ -521,6 +586,10 @@ if st.session_state.df_mlb is not None:
 
                             e_local = juego['home_name']
                             e_visita = juego['away_name']
+                            
+                            home_id = juego.get('home_id')
+                            away_id = juego.get('away_id')
+                            
                             p_local, p_visita = get_starting_pitchers(juego)
 
                             if e_local not in MLB_TEAM_WHITELIST or e_visita not in MLB_TEAM_WHITELIST: continue
@@ -554,9 +623,15 @@ if st.session_state.df_mlb is not None:
 
                             whip_l = get_pitcher_whip(p_local, st.session_state.fecha_hoy)
                             whip_v = get_pitcher_whip(p_visita, st.session_state.fecha_hoy)
+                            
+                            # --- NUEVA LÓGICA DE BULLPEN ---
+                            whip_bp_l = get_bullpen_metrics(home_id, st.session_state.fecha_hoy)
+                            whip_bp_v = get_bullpen_metrics(away_id, st.session_state.fecha_hoy)
 
                             prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
-                            pitcher_adj = (whip_v - whip_l) * 0.15
+                            
+                            # Ajuste balanceado: Abridor vs Bullpen
+                            pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
 
                             prob_final_local = (prob + (racha_l - racha_v)*PESO_RACHA + (h2h - 0.5)*PESO_H2H +
                                                 (luck_l - luck_v)*PESO_PITAGORICO + (split_l - split_v)*PESO_SPLITS + pitcher_adj)
@@ -582,7 +657,9 @@ if st.session_state.df_mlb is not None:
                                 "✈️ Visitante": f"{e_visita} ({rec_v})",
                                 "🏠 Local": f"{e_local} ({rec_l})",
                                 "⚾ Abridor (V)": f"{p_visita or 'TBD'} ({whip_v:.2f})",
+                                "🔥 BP (V)": f"{whip_bp_v:.2f}",
                                 "⚾ Abridor (L)": f"{p_local or 'TBD'} ({whip_l:.2f})",
+                                "🔥 BP (L)": f"{whip_bp_l:.2f}",
                                 "🎯 Jugada Recomendada": jugada_str,
                                 "📊 Prob.": prob_str,
                                 "📝 Evaluación": eval_str,
@@ -592,7 +669,7 @@ if st.session_state.df_mlb is not None:
 
                         resultados_jornada.sort(key=lambda x: x['raw_time'])
                         st.session_state.resultados_jornada = resultados_jornada
-                        st.success("✅ Análisis completado. Lanzadores con WHIP de sus últimos 7 juegos. Resultados guardados.")
+                        st.success("✅ Análisis completado integrando Abridores (66%) y Relevistas (34% + Factor Fatiga).")
 
         if "resultados_jornada" in st.session_state and st.session_state.resultados_jornada is not None:
             resultados_jornada = st.session_state.resultados_jornada
@@ -601,9 +678,12 @@ if st.session_state.df_mlb is not None:
             def color_whip(row):
                 styles = [''] * len(row)
                 for j, col in enumerate(row.index):
-                    if col in ['⚾ Abridor (V)', '⚾ Abridor (L)']:
+                    if col in ['⚾ Abridor (V)', '⚾ Abridor (L)', '🔥 BP (V)', '🔥 BP (L)']:
                         try:
-                            whip = float(str(row[col]).split('(')[-1].replace(')', ''))
+                            # Filtra tanto el texto (1.30) del abridor como el puro número del BP
+                            val_str = str(row[col])
+                            whip = float(val_str.split('(')[-1].replace(')', '')) if '(' in val_str else float(val_str)
+                            
                             if whip < 1.00: styles[j] = 'color: #00cc66; font-weight: bold;'
                             elif whip <= 1.30: styles[j] = 'color: #ff9900; font-weight: bold;'
                             else: styles[j] = 'color: #ff4d4d; font-weight: bold;'
@@ -616,7 +696,6 @@ if st.session_state.df_mlb is not None:
 
             st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
 
-            # --- BOTÓN DESCARGA EXCEL ---
             excel_cartelera = convertir_df_a_excel(df_resultados, "Cartelera")
             st.download_button(
                 label="📥 Descargar Cartelera (Excel)",
@@ -657,7 +736,6 @@ if st.session_state.df_mlb is not None:
             df_k_estilizado = df_k.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
             st.dataframe(df_k_estilizado, use_container_width=True, hide_index=True)
 
-            # --- BOTÓN DESCARGA EXCEL ---
             excel_ponches = convertir_df_a_excel(df_k, "Ponches")
             st.download_button(
                 label="📥 Descargar Caza-Ponches (Excel)",
@@ -696,7 +774,6 @@ if st.session_state.df_mlb is not None:
             df_hits_estilizado = df_hits.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
             st.dataframe(df_hits_estilizado, use_container_width=True, hide_index=True)
 
-            # --- BOTÓN DESCARGA EXCEL ---
             excel_hits = convertir_df_a_excel(df_hits, "Hits")
             st.download_button(
                 label="📥 Descargar Caza-Hits (Excel)",
@@ -794,6 +871,9 @@ if st.session_state.df_mlb is not None:
                     e_local = juego['home_name']
                     e_visita = juego['away_name']
                     if e_local not in MLB_TEAM_WHITELIST or e_visita not in MLB_TEAM_WHITELIST: continue
+                    
+                    home_id = juego.get('home_id')
+                    away_id = juego.get('away_id')
 
                     p_local, p_visita = get_starting_pitchers(juego)
                     elo_l = df_filtrado_aud[df_filtrado_aud['Local'] == e_local].tail(1)['Elo_L'].values[0] if len(df_filtrado_aud[df_filtrado_aud['Local'] == e_local]) > 0 else 1500
@@ -806,11 +886,17 @@ if st.session_state.df_mlb is not None:
                     luck_l = get_pythagorean_luck(e_local, df_filtrado_aud)
                     luck_v = get_pythagorean_luck(e_visita, df_filtrado_aud)
                     split_l, split_v = get_splits_win_pct(e_local, e_visita, df_filtrado_aud)
+                    
                     whip_l = get_pitcher_whip(p_local, fecha_str)
                     whip_v = get_pitcher_whip(p_visita, fecha_str)
+                    
+                    # Lógica de Bullpen para Auditoría Histórica
+                    whip_bp_l = get_bullpen_metrics(home_id, fecha_str)
+                    whip_bp_v = get_bullpen_metrics(away_id, fecha_str)
 
                     prob = clf_aud.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
-                    pitcher_adj = (whip_v - whip_l) * 0.15
+                    pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
+                    
                     prob_final_local = (prob + (racha_l - racha_v)*PESO_RACHA + (h2h - 0.5)*PESO_H2H +
                                         (luck_l - luck_v)*PESO_PITAGORICO + (split_l - split_v)*PESO_SPLITS + pitcher_adj)
                     ganador = e_local if prob_final_local > 0.5 else e_visita
@@ -857,7 +943,6 @@ if st.session_state.df_mlb is not None:
                 st.markdown("### 📈 Resultados Diarios")
                 st.dataframe(df_aud, use_container_width=True, hide_index=True)
                 
-                # --- BOTÓN DESCARGA EXCEL ---
                 excel_auditoria = convertir_df_a_excel(df_aud, "Auditoria")
                 st.download_button(
                     label="📥 Descargar Auditoría (Excel)",
