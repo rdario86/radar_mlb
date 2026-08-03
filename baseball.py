@@ -608,6 +608,15 @@ if st.session_state.df_mlb is not None:
 
             st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
 
+            # --- NUEVO: BOTÓN DESCARGA CARTELERA CSV ---
+            csv_cartelera = df_resultados.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 Descargar Cartelera (CSV)",
+                data=csv_cartelera,
+                file_name=f"cartelera_mlb_{st.session_state.fecha_hoy}.csv",
+                mime="text/csv",
+            )
+
             total_evaluados = sum(1 for e in df_resultados['📝 Evaluación'] if '✅' in e or '❌' in e)
             aciertos = sum(1 for e in df_resultados['📝 Evaluación'] if '✅' in e)
 
@@ -640,6 +649,15 @@ if st.session_state.df_mlb is not None:
             df_k_estilizado = df_k.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
             st.dataframe(df_k_estilizado, use_container_width=True, hide_index=True)
 
+            # --- NUEVO: BOTÓN DESCARGA PONCHES CSV ---
+            csv_ponches = df_k.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 Descargar Caza-Ponches (CSV)",
+                data=csv_ponches,
+                file_name=f"caza_ponches_{st.session_state.fecha_hoy}.csv",
+                mime="text/csv",
+            )
+
             total_evaluados = sum(1 for e in df_k['📝 Evaluación'] if '✅' in e or '❌' in e)
             aciertos = sum(1 for e in df_k['📝 Evaluación'] if '✅' in e)
 
@@ -669,6 +687,15 @@ if st.session_state.df_mlb is not None:
             df_hits = pd.DataFrame(st.session_state[clave_hits])
             df_hits_estilizado = df_hits.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
             st.dataframe(df_hits_estilizado, use_container_width=True, hide_index=True)
+
+            # --- NUEVO: BOTÓN DESCARGA HITS CSV ---
+            csv_hits = df_hits.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 Descargar Caza-Hits (CSV)",
+                data=csv_hits,
+                file_name=f"caza_hits_{st.session_state.fecha_hoy}.csv",
+                mime="text/csv",
+            )
 
             total_evaluados = sum(1 for e in df_hits['📝 Evaluación'] if '✅' in e or '❌' in e)
             aciertos = sum(1 for e in df_hits['📝 Evaluación'] if '✅' in e)
@@ -821,6 +848,15 @@ if st.session_state.df_mlb is not None:
                 df_aud = pd.DataFrame(resultados)
                 st.markdown("### 📈 Resultados Diarios")
                 st.dataframe(df_aud, use_container_width=True, hide_index=True)
+                
+                # --- NUEVO: BOTÓN DESCARGA AUDITORÍA CSV ---
+                csv_auditoria = df_aud.to_csv(index=False).encode('utf-8-sig')
+                st.download_button(
+                    label="📥 Descargar Auditoría (CSV)",
+                    data=csv_auditoria,
+                    file_name="auditoria_7dias.csv",
+                    mime="text/csv",
+                )
 
                 total_gan_acc = sum(int(r["Ganadores"].split('/')[0]) for r in resultados)
                 total_gan_eval = sum(int(r["Ganadores"].split('/')[1]) for r in resultados)
