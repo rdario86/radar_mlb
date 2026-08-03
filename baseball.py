@@ -306,7 +306,6 @@ def get_hit_hunters(anio, fecha_hoy):
             season_ab = 1; season_hits = 0
             l10_hits = 0; l10_ab = 0
             hits_hoy_real = 0; ab_hoy_real = 0
-            dio_hit_ayer = False
 
             for block in stats_blocks:
                 if block.get('type', {}).get('displayName') == 'season':
@@ -319,8 +318,6 @@ def get_hit_hunters(anio, fecha_hoy):
 
                     for game in valid_splits[:10]:
                         g_stats = game.get('stat', {})
-                        if game.get('date', '') == fecha_ayer_str and int(g_stats.get('hits', 0)) >= 1:
-                            dio_hit_ayer = True
                         l10_hits += int(g_stats.get('hits', 0))
                         l10_ab += int(g_stats.get('atBats', 0))
 
@@ -328,8 +325,6 @@ def get_hit_hunters(anio, fecha_hoy):
                         if game.get('date') == fecha_hoy:
                             hits_hoy_real += int(game.get('stat', {}).get('hits', 0))
                             ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
-
-            if dio_hit_ayer: continue
 
             if game_status in ['Final', 'Game Over'] and ab_hoy_real == 0: continue
 
