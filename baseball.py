@@ -177,7 +177,6 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
         return avg_whip
     except: return avg_whip
 
-# --- NUEVO CÁLCULO QUIRÚRGICO DE BULLPEN ---
 def get_bullpen_metrics(team_id, fecha_corte):
     avg_whip = 1.30 
     if not team_id: return avg_whip
@@ -295,8 +294,13 @@ def get_hit_hunters(anio, fecha_hoy):
             condicion = p.get('condicion_hoy', 'Visitante')
             game_status = p.get('game_status', '')
 
-            raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'stats(group=[hitting],type=[season,gameLog])'})
+            raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'currentTeam,stats(group=[hitting],type=[season,gameLog])'})
             person = raw_data.get('people', [{}])[0]
+            
+            current_team_obj = person.get('currentTeam', {})
+            if current_team_obj:
+                team_name = current_team_obj.get('name', team_name)
+                
             stats_blocks = person.get('stats', [])
 
             season_ab = 1; season_hits = 0
