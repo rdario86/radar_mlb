@@ -912,7 +912,7 @@ if st.session_state.df_mlb is not None:
         st.markdown("### 💣 Radar de Jonrones: Filtro de Regresión + Localía")
         col_gen, col_ver = st.columns(2)
         with col_gen:
-            if st.button("🔍 Generar Selección", type="primary", use_container_width=True):
+            if st.button("🔍 Generar Selección", type="primary", use_container_width=True, key="gen_hr"):
                 with st.spinner("Buscando cazadores de jonrones..."):
                     resultados_hr = get_hr_hunters(anio_sel, st.session_state.fecha_hoy)
                     if resultados_hr:
@@ -921,7 +921,7 @@ if st.session_state.df_mlb is not None:
                         st.session_state[f"resultados_hr_{st.session_state.fecha_hoy}"] = None
                         st.warning("No se detectaron líderes válidos.")
         with col_ver:
-            if st.button("🔄 Verificar Resultados", use_container_width=True):
+            if st.button("🔄 Verificar Resultados", use_container_width=True, key="verificar_hr"):
                 clave_hr = f"resultados_hr_{st.session_state.fecha_hoy}"
                 if clave_hr in st.session_state and st.session_state[clave_hr] is not None:
                     actualizada = actualizar_evaluacion_hr(st.session_state[clave_hr], st.session_state.fecha_hoy)
@@ -953,7 +953,7 @@ if st.session_state.df_mlb is not None:
         st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival")
         col_gen, col_ver = st.columns(2)
         with col_gen:
-            if st.button("🎯 Generar Selección", type="primary", use_container_width=True):
+            if st.button("🎯 Generar Selección", type="primary", use_container_width=True, key="gen_k"):
                 with st.spinner("Buscando lanzadores..."):
                     resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
                     if resultados_k:
@@ -962,7 +962,7 @@ if st.session_state.df_mlb is not None:
                         st.session_state[f"resultados_k_{st.session_state.fecha_hoy}"] = None
                         st.warning("No hay datos de pitcheo.")
         with col_ver:
-            if st.button("🔄 Verificar Resultados", use_container_width=True):
+            if st.button("🔄 Verificar Resultados", use_container_width=True, key="verificar_k"):
                 clave_k = f"resultados_k_{st.session_state.fecha_hoy}"
                 if clave_k in st.session_state and st.session_state[clave_k] is not None:
                     actualizada = actualizar_evaluacion_k(st.session_state[clave_k], st.session_state.fecha_hoy)
@@ -994,7 +994,7 @@ if st.session_state.df_mlb is not None:
         st.markdown("### 🔹 Radar de Hits: Probabilidad de 1+ Imparables")
         col_gen, col_ver = st.columns(2)
         with col_gen:
-            if st.button("🔎 Generar Selección", type="primary", use_container_width=True):
+            if st.button("🔎 Generar Selección", type="primary", use_container_width=True, key="gen_hits"):
                 with st.spinner("Buscando bateadores..."):
                     resultados_hits = get_hit_hunters(anio_sel, st.session_state.fecha_hoy)
                     if resultados_hits:
@@ -1003,7 +1003,7 @@ if st.session_state.df_mlb is not None:
                         st.session_state[f"resultados_hits_{st.session_state.fecha_hoy}"] = None
                         st.warning("No se encontraron bateadores.")
         with col_ver:
-            if st.button("🔄 Verificar Resultados", use_container_width=True):
+            if st.button("🔄 Verificar Resultados", use_container_width=True, key="verificar_hits"):
                 clave_hits = f"resultados_hits_{st.session_state.fecha_hoy}"
                 if clave_hits in st.session_state and st.session_state[clave_hits] is not None:
                     actualizada = actualizar_evaluacion_hits(st.session_state[clave_hits], st.session_state.fecha_hoy)
