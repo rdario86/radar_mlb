@@ -177,187 +177,6 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
         return avg_whip
     except: return avg_whip
 
-def get_pitcher_hand(pitcher_name):
-    if not pitcher_name or pitcher_name == 'TBD':
-        return 'U'
-    try:
-        players = statsapi.lookup_player(pitcher_name)
-        if not players:
-            return 'U'
-        pid = players[0]['id']
-        person = statsapi.get('person', {'personId': pid})
-        hand = person.get('people', [{}])[0].get('pitchHand', {}).get('code', 'U')
-        return hand
-    except:
-        return 'U'
-
-def get_hr_hunters(anio, fecha_hoy):
-    PARK_HR_FACTORS = {
-        "Arizona Diamondbacks": 1.08, "Atlanta Braves": 1.02, "Baltimore Orioles": 1.10,
-        "Boston Red Sox": 1.06, "Chicago Cubs": 0.96, "Chicago White Sox": 1.00,
-        "Cincinnati Reds": 1.22, "Cleveland Guardians": 0.98, "Colorado Rockies": 1.35,
-        "Detroit Tigers": 0.98, "Houston Astros": 1.02, "Kansas City Royals": 0.99,
-        "Los Angeles Angels": 1.00, "Los Angeles Dodgers": 0.95, "Miami Marlins": 0.94,
-        "Milwaukee Brewers": 1.07, "Minnesota Twins": 0.97, "New York Mets": 0.95,
-        "New York Yankees": 1.08, "Athletics": 0.96, "Philadelphia Phillies": 1.05,
-        "Pittsburgh Pirates": 0.93, "San Diego Padres": 0.88, "San Francisco Giants": 0.85,
-        "Seattle Mariners": 0.91, "St. Louis Cardinals": 0.95, "Tampa Bay Rays": 0.92,
-        "Texas Rangers": 1.04, "Toronto Blue Jays": 1.01, "Washington Nationals": 1.00,
-    }
-
-    try:
-        juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
-        equipos_hoy = {}
-        team_game_map = {}
-        for juego in juegos_hoy:
-            if juego.get('status', '') not in ['Postponed', 'Cancelled']:
-                home_id = juego.get('home_id')
-                away_id = juego.get('away_id')
-                equipos_hoy[home_id] = {'condicion': 'Local', 'status': juego.get('status')}
-                equipos_hoy[away_id] = {'condicion': 'Visitante', 'status': juego.get('status')}
-                team_game_map[home_id] = juego
-                team_game_map[away_id] = juego
-
-        data = statsapi.get('stats_leaders', {'leaderCategories': 'homeRuns', 'season': anio, 'limit': 80, 'statGroup': 'hitting'})
-        if not data or 'leagueLeaders' not in data or len(data['leagueLeaders']) == 0:
-            return []
-
-        leaders = data['leagueLeaders'][0].get('leaders', [])
-        jugadores_activos = []
-        for p in leaders:
-            team_id = p.get('team', {}).get('id')
-            if team_id in equipos_hoy:
-                p['condicion_hoy'] = equipos_hoy[team_id]['condicion']
-                p['team_name'] = p.get('team', {}).get('name', 'Unknown')
-                p['game_status'] = equipos_hoy[team_id]['status']
-                p['team_id'] = team_id
-                jugadores_activos.append(p)
-
-        resultados = []
-        ayer_dt = datetime.datetime.strptime(fecha_hoy, '%Y-%m-%d') - datetime.timedelta(days=1)
-        fecha_ayer_str = ayer_dt.strftime('%Y-%m-%d')
-
-        pitcher_hand_cache = {}
-
-        for p in jugadores_activos:
-            p_id = p.get('person', {}).get('id')
-            p_name = p.get('person', {}).get('fullName')
-            team_name = p.get('team_name', 'Unknown')
-            condicion = p.get('condicion_hoy', 'Visitante')
-            team_id = p.get('team_id')
-            game_status = p.get('game_status', '')
-
-            juego = team_game_map.get(team_id)
-            opposing_pitcher = None
-            if juego:
-                if condicion == 'Local':
-                    opposing_pitcher = juego.get('away_probable_pitcher', '')
-                else:
-                    opposing_pitcher = juego.get('home_probable_pitcher', '')
-                if not opposing_pitcher or opposing_pitcher == 'TBD':
-                    hp, ap = get_starting_pitchers(juego)
-                    opposing_pitcher = ap if condicion == 'Local' else hp
-
-            raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'stats(group=[hitting],type=[season,gameLog])'})
-            person = raw_data.get('people', [{}])[0]
-            stats_blocks = person.get('stats', [])
-
-            season_ab = 1; season_hr = 0
-            l10_hr = 0; l10_ab = 0
-            hr_hoy_real = 0; ab_hoy_real = 0
-            dio_jonron_ayer = False
-
-            for block in stats_blocks:
-                if block.get('type', {}).get('displayName') == 'season':
-                    season_ab = int(block.get('splits', [{}])[0].get('stat', {}).get('atBats', 1))
-                    season_hr = int(block.get('splits', [{}])[0].get('stat', {}).get('homeRuns', 0))
-                elif block.get('type', {}).get('displayName') == 'gameLog':
-                    splits = block.get('splits', [])
-                    valid_splits = [s for s in splits if s.get('date', '') < fecha_hoy]
-                    valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
-
-                    for game in valid_splits[:10]:
-                        g_stats = game.get('stat', {})
-                        if game.get('date', '') == fecha_ayer_str and int(g_stats.get('homeRuns', 0)) > 0:
-                            dio_jonron_ayer = True
-                        l10_hr += int(g_stats.get('homeRuns', 0))
-                        l10_ab += int(g_stats.get('atBats', 0))
-
-                    for game in splits:
-                        if game.get('date') == fecha_hoy:
-                            hr_hoy_real += int(game.get('stat', {}).get('homeRuns', 0))
-                            ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
-
-            if dio_jonron_ayer: continue
-            if game_status in ['Final', 'Game Over'] and ab_hoy_real == 0: continue
-
-            season_hr = max(0, season_hr - hr_hoy_real)
-            season_ab = max(1, season_ab - ab_hoy_real)
-            l10_ab = max(1, l10_ab)
-
-            hr_index = ((season_hr / season_ab * 0.3) + (l10_hr / l10_ab * 0.7)) * (1.10 if condicion == 'Local' else 1.0)
-
-            factor_platoon = 1.0
-            if opposing_pitcher and opposing_pitcher != 'TBD':
-                if opposing_pitcher not in pitcher_hand_cache:
-                    pitcher_hand_cache[opposing_pitcher] = get_pitcher_hand(opposing_pitcher)
-                pitcher_hand = pitcher_hand_cache[opposing_pitcher]
-                bat_hand = person.get('batSide', {}).get('code', 'U')
-                if pitcher_hand in ('R', 'L') and bat_hand in ('R', 'L'):
-                    if pitcher_hand != bat_hand:
-                        if bat_hand == 'L':
-                            factor_platoon = 1.25
-                        else:
-                            factor_platoon = 1.15
-            hr_index *= factor_platoon
-
-            home_team_name = juego.get('home_name', '') if juego else ''
-            park_factor = PARK_HR_FACTORS.get(home_team_name, 1.0)
-            hr_index *= park_factor
-
-            hr_index_rounded = round(hr_index, 4)
-
-            prob_hr_game = 1 - (1 - hr_index) ** 4
-            prob_hr_pct = int(round(prob_hr_game * 100))
-
-            eval_str = "⏳ Pendiente"
-            if game_status in ['Final', 'Game Over']:
-                if ab_hoy_real == 0:
-                    eval_str = "🚫 No jugó"
-                else:
-                    eval_str = "✅ Acierto" if hr_hoy_real > 0 else "❌ Fallo"
-
-            resultados.append({
-                "⚾ Bateador": p_name,
-                "👕 Equipo": team_name,
-                "🏟️ Condición": condicion,
-                "🏆 HR Año": season_hr,
-                "🔥 HR (L10)": l10_hr,
-                "📊 Turnos (L10)": l10_ab,
-                "📝 Evaluación": eval_str,
-                "score": hr_index_rounded,
-                "prob_hr_game": prob_hr_pct
-            })
-
-        resultados.sort(key=lambda x: (x['score'], x['⚾ Bateador']), reverse=True)
-        resultados = resultados[:4]
-
-        tabla_final = []
-        for r in resultados:
-            tabla_final.append({
-                "⚾ Bateador": r["⚾ Bateador"],
-                "👕 Equipo": r["👕 Equipo"],
-                "🏟️ Condición": r["🏟️ Condición"],
-                "🏆 HR Año": r["🏆 HR Año"],
-                "🔥 HR (L10)": r["🔥 HR (L10)"],
-                "📈 Ratio de Poder (L10)": f"{r['🔥 HR (L10)']} HR / {r['📊 Turnos (L10)']} VB",
-                "🎯 Prob. HR (Partido)": f"{r['prob_hr_game']}%",
-                "📝 Evaluación": r["📝 Evaluación"]
-            })
-        return tabla_final
-    except Exception:
-        return []
-
 def get_hit_hunters(anio, fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
@@ -460,109 +279,6 @@ def get_hit_hunters(anio, fecha_hoy):
         return top4
     except Exception:
         return []
-
-def actualizar_evaluacion_hr(lista_original, fecha):
-    nueva_lista = []
-    for jugador in lista_original:
-        nombre = jugador["⚾ Bateador"]
-        equipo = jugador["👕 Equipo"]
-        juegos_dia = statsapi.schedule(date=fecha, sportId=1)
-        hr_real = 0
-        ab_real = 0
-        for juego in juegos_dia:
-            if juego.get('status') in ['Final', 'Game Over'] and \
-               (juego.get('home_name') == equipo or juego.get('away_name') == equipo):
-                game_id = juego.get('game_id')
-                try:
-                    box = statsapi.boxscore_data(game_id)
-                    for team in ['home', 'away']:
-                        players = box.get(team, {}).get('players', {})
-                        for pid, pdata in players.items():
-                            full = pdata.get('person', {}).get('fullName', '')
-                            if full == nombre:
-                                stats = pdata.get('stats', {}).get('batting', {})
-                                hr_real = int(stats.get('homeRuns', 0))
-                                ab_real = int(stats.get('atBats', 0))
-                                break
-                except:
-                    pass
-        if ab_real == 0:
-            eval_nueva = "🚫 No jugó"
-        else:
-            eval_nueva = "✅ Acierto" if hr_real > 0 else "❌ Fallo"
-        nuevo = jugador.copy()
-        nuevo["📝 Evaluación"] = eval_nueva
-        nueva_lista.append(nuevo)
-    return nueva_lista
-
-def actualizar_evaluacion_hits(lista_original, fecha):
-    nueva_lista = []
-    for jugador in lista_original:
-        nombre = jugador["⚾ Bateador"]
-        equipo = jugador["👕 Equipo"]
-        juegos_dia = statsapi.schedule(date=fecha, sportId=1)
-        hits_real = 0
-        ab_real = 0
-        for juego in juegos_dia:
-            if juego.get('status') in ['Final', 'Game Over'] and \
-               (juego.get('home_name') == equipo or juego.get('away_name') == equipo):
-                game_id = juego.get('game_id')
-                try:
-                    box = statsapi.boxscore_data(game_id)
-                    for team in ['home', 'away']:
-                        players = box.get(team, {}).get('players', {})
-                        for pid, pdata in players.items():
-                            full = pdata.get('person', {}).get('fullName', '')
-                            if full == nombre:
-                                stats = pdata.get('stats', {}).get('batting', {})
-                                hits_real = int(stats.get('hits', 0))
-                                ab_real = int(stats.get('atBats', 0))
-                                break
-                except:
-                    pass
-        if ab_real == 0:
-            eval_nueva = "🚫 No jugó"
-        else:
-            eval_nueva = "✅ Acierto" if hits_real >= 1 else "❌ Fallo"
-        nuevo = jugador.copy()
-        nuevo["📝 Evaluación"] = eval_nueva
-        nueva_lista.append(nuevo)
-    return nueva_lista
-
-def actualizar_evaluacion_k(lista_original, fecha):
-    nueva_lista = []
-    for pitcher in lista_original:
-        nombre = pitcher["⚾ Abridor"]
-        equipo = pitcher["👕 Equipo"]
-        meta_ks = int(pitcher["🎯 Proy. Ponches"].split()[0])
-        juegos_dia = statsapi.schedule(date=fecha, sportId=1)
-        ks_real = 0
-        outs_real = 0
-        for juego in juegos_dia:
-            if juego.get('status') in ['Final', 'Game Over'] and \
-               (juego.get('home_name') == equipo or juego.get('away_name') == equipo):
-                game_id = juego.get('game_id')
-                try:
-                    box = statsapi.boxscore_data(game_id)
-                    for team in ['home', 'away']:
-                        players = box.get(team, {}).get('players', {})
-                        for pid, pdata in players.items():
-                            full = pdata.get('person', {}).get('fullName', '')
-                            if full == nombre:
-                                stats = pdata.get('stats', {}).get('pitching', {})
-                                ks_real = int(stats.get('strikeOuts', 0))
-                                outs_real = int(stats.get('outs', 0))
-                                break
-                except:
-                    pass
-        if outs_real == 0:
-            eval_nueva = "🚫 No lanzó"
-        else:
-            eval_nueva = f"✅ Acierto ({ks_real} Ks)" if ks_real >= meta_ks else f"❌ Fallo ({ks_real} Ks)"
-        nuevo = pitcher.copy()
-        nuevo["📝 Evaluación"] = eval_nueva
-        nueva_lista.append(nuevo)
-    return nueva_lista
 
 def get_strikeout_hunters(fecha_hoy):
     try:
@@ -764,9 +480,8 @@ if st.session_state.df_mlb is not None:
         df_filtrado['Win'] = (df_filtrado['Carreras_Local'] > df_filtrado['Carreras_Visitante']).astype(int)
         clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df_filtrado[['Elo_L', 'Elo_V']], df_filtrado['Win'])
     
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📅 Cartelera del Día",
-    "💣 Caza-Jonrones",
     "🔥 Caza-Ponches",
     "🔹 Caza-Hits",
     "🧮 Calculadora +EV",
@@ -909,67 +624,15 @@ if st.session_state.df_mlb is not None:
             st.info("Presiona el botón 'Analizar y Evaluar Cartelera' para generar las predicciones del día.")
 
     with tab2:
-        st.markdown("### 💣 Radar de Jonrones: Filtro de Regresión + Localía")
-        col_gen, col_ver = st.columns(2)
-        with col_gen:
-            if st.button("🔍 Generar Selección", type="primary", use_container_width=True, key="gen_hr"):
-                with st.spinner("Buscando cazadores de jonrones..."):
-                    resultados_hr = get_hr_hunters(anio_sel, st.session_state.fecha_hoy)
-                    if resultados_hr:
-                        st.session_state[f"resultados_hr_{st.session_state.fecha_hoy}"] = resultados_hr
-                    else:
-                        st.session_state[f"resultados_hr_{st.session_state.fecha_hoy}"] = None
-                        st.warning("No se detectaron líderes válidos.")
-        with col_ver:
-            if st.button("🔄 Verificar Resultados", use_container_width=True, key="verificar_hr"):
-                clave_hr = f"resultados_hr_{st.session_state.fecha_hoy}"
-                if clave_hr in st.session_state and st.session_state[clave_hr] is not None:
-                    actualizada = actualizar_evaluacion_hr(st.session_state[clave_hr], st.session_state.fecha_hoy)
-                    st.session_state[clave_hr] = actualizada
-                    st.rerun()
-                else:
-                    st.warning("Primero genera la selección.")
-
-        clave_hr = f"resultados_hr_{st.session_state.fecha_hoy}"
-        if clave_hr in st.session_state and st.session_state[clave_hr] is not None:
-            df_hr = pd.DataFrame(st.session_state[clave_hr])
-            df_hr_estilizado = df_hr.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
-            st.dataframe(df_hr_estilizado, use_container_width=True, hide_index=True)
-
-            total_evaluados = sum(1 for e in df_hr['📝 Evaluación'] if '✅' in e or '❌' in e)
-            aciertos = sum(1 for e in df_hr['📝 Evaluación'] if '✅' in e)
-
-            if total_evaluados > 0:
-                efectividad = (aciertos / total_evaluados) * 100
-                st.markdown("### 📊 Rendimiento Caza-Jonrones")
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Bateadores Evaluados", total_evaluados)
-                c2.metric("Jonrones Acertados", aciertos)
-                c3.metric("Efectividad", f"{int(round(efectividad))}%")
-        elif clave_hr not in st.session_state:
-            st.info("Presiona 'Generar Selección' para obtener candidatos.")
-
-    with tab3:
         st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival")
-        col_gen, col_ver = st.columns(2)
-        with col_gen:
-            if st.button("🎯 Generar Selección", type="primary", use_container_width=True, key="gen_k"):
-                with st.spinner("Buscando lanzadores..."):
-                    resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
-                    if resultados_k:
-                        st.session_state[f"resultados_k_{st.session_state.fecha_hoy}"] = resultados_k
-                    else:
-                        st.session_state[f"resultados_k_{st.session_state.fecha_hoy}"] = None
-                        st.warning("No hay datos de pitcheo.")
-        with col_ver:
-            if st.button("🔄 Verificar Resultados", use_container_width=True, key="verificar_k"):
-                clave_k = f"resultados_k_{st.session_state.fecha_hoy}"
-                if clave_k in st.session_state and st.session_state[clave_k] is not None:
-                    actualizada = actualizar_evaluacion_k(st.session_state[clave_k], st.session_state.fecha_hoy)
-                    st.session_state[clave_k] = actualizada
-                    st.rerun()
+        if st.button("🎯 Cazar Ponches del Día (Top 4)", type="primary", use_container_width=True):
+            with st.spinner("Haciendo el cruce de vulnerabilidad y auditando ponches finales..."):
+                resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
+                if resultados_k:
+                    st.session_state[f"resultados_k_{st.session_state.fecha_hoy}"] = resultados_k
                 else:
-                    st.warning("Primero genera la selección.")
+                    st.session_state[f"resultados_k_{st.session_state.fecha_hoy}"] = None
+                    st.warning("No hay suficientes datos de pitcheo para evaluar esta jornada.")
 
         clave_k = f"resultados_k_{st.session_state.fecha_hoy}"
         if clave_k in st.session_state and st.session_state[clave_k] is not None:
@@ -988,29 +651,18 @@ if st.session_state.df_mlb is not None:
                 c2.metric("Metas Superadas", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
         elif clave_k not in st.session_state:
-            st.info("Presiona 'Generar Selección' para obtener candidatos.")
+            st.info("Presiona el botón para cazar ponches del día.")
                 
-    with tab4:
+    with tab3:
         st.markdown("### 🔹 Radar de Hits: Probabilidad de 1+ Imparables")
-        col_gen, col_ver = st.columns(2)
-        with col_gen:
-            if st.button("🔎 Generar Selección", type="primary", use_container_width=True, key="gen_hits"):
-                with st.spinner("Buscando bateadores..."):
-                    resultados_hits = get_hit_hunters(anio_sel, st.session_state.fecha_hoy)
-                    if resultados_hits:
-                        st.session_state[f"resultados_hits_{st.session_state.fecha_hoy}"] = resultados_hits
-                    else:
-                        st.session_state[f"resultados_hits_{st.session_state.fecha_hoy}"] = None
-                        st.warning("No se encontraron bateadores.")
-        with col_ver:
-            if st.button("🔄 Verificar Resultados", use_container_width=True, key="verificar_hits"):
-                clave_hits = f"resultados_hits_{st.session_state.fecha_hoy}"
-                if clave_hits in st.session_state and st.session_state[clave_hits] is not None:
-                    actualizada = actualizar_evaluacion_hits(st.session_state[clave_hits], st.session_state.fecha_hoy)
-                    st.session_state[clave_hits] = actualizada
-                    st.rerun()
+        if st.button("🔎 Buscar Bateadores con 1+ Hits (Top 4)", type="primary", use_container_width=True):
+            with st.spinner("Calculando probabilidades de dar hits..."):
+                resultados_hits = get_hit_hunters(anio_sel, st.session_state.fecha_hoy)
+                if resultados_hits:
+                    st.session_state[f"resultados_hits_{st.session_state.fecha_hoy}"] = resultados_hits
                 else:
-                    st.warning("Primero genera la selección.")
+                    st.session_state[f"resultados_hits_{st.session_state.fecha_hoy}"] = None
+                    st.warning("No se encontraron bateadores con datos suficientes para hoy.")
 
         clave_hits = f"resultados_hits_{st.session_state.fecha_hoy}"
         if clave_hits in st.session_state and st.session_state[clave_hits] is not None:
@@ -1029,9 +681,9 @@ if st.session_state.df_mlb is not None:
                 c2.metric("Aciertos (1+ Hits)", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
         elif clave_hits not in st.session_state:
-            st.info("Presiona 'Generar Selección' para obtener candidatos.")
+            st.info("Presiona el botón para buscar bateadores con alta probabilidad de 1+ hits.")
 
-    with tab5:
+    with tab4:
         st.markdown("### 🧮 Calculadora de Valor Esperado (+EV)")
         st.markdown("Compara la probabilidad matemática del Radar con la cuota decimal de tu casa de apuestas para descubrir si la jugada es rentable a largo plazo.")
         
@@ -1071,8 +723,8 @@ if st.session_state.df_mlb is not None:
                 col2.metric("Valor Esperado (EV)", f"{ev_pct_int}%", "No Rentable (-EV)", delta_color="inverse")
                 st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita_int}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")
 
-    with tab6:
-        st.markdown("### 📊 Auditoría Histórica (Últimos 7 Días)")
+    with tab5:
+        st.markdown("### 📊 Auditoría Semanal (Últimos 7 Días)")
         st.markdown("Evalúa el rendimiento del radar en los últimos 7 días con juegos finalizados.")
 
         if st.button("🔍 Ejecutar Auditoría (7 días)", type="primary", use_container_width=True):
@@ -1135,11 +787,6 @@ if st.session_state.df_mlb is not None:
                     if r_ganador == ganador: aciertos_gan += 1
                     total_gan += 1
 
-                hr_data = get_hr_hunters(anio_sel, fecha_str)
-                aciertos_hr = sum(1 for h in hr_data if '✅' in h['📝 Evaluación'])
-                fallos_hr = sum(1 for h in hr_data if '❌' in h['📝 Evaluación'])
-                total_hr = aciertos_hr + fallos_hr
-
                 k_data = get_strikeout_hunters(fecha_str)
                 aciertos_k = sum(1 for k in k_data if '✅' in k['📝 Evaluación'])
                 fallos_k = sum(1 for k in k_data if '❌' in k['📝 Evaluación'])
@@ -1153,11 +800,9 @@ if st.session_state.df_mlb is not None:
                 resultados.append({
                     "Fecha": fecha_str,
                     "Ganadores": f"{aciertos_gan}/{total_gan}",
-                    "HR": f"{aciertos_hr}/{total_hr}",
                     "Ponches": f"{aciertos_k}/{total_k}",
                     "Hits": f"{aciertos_hits}/{total_hits}",
                     "Efect. Ganadores (%)": round(aciertos_gan/total_gan*100, 1) if total_gan else 0,
-                    "Efect. HR (%)": round(aciertos_hr/total_hr*100, 1) if total_hr else 0,
                     "Efect. Ponches (%)": round(aciertos_k/total_k*100, 1) if total_k else 0,
                     "Efect. Hits (%)": round(aciertos_hits/total_hits*100, 1) if total_hits else 0
                 })
@@ -1179,8 +824,6 @@ if st.session_state.df_mlb is not None:
 
                 total_gan_acc = sum(int(r["Ganadores"].split('/')[0]) for r in resultados)
                 total_gan_eval = sum(int(r["Ganadores"].split('/')[1]) for r in resultados)
-                total_hr_acc = sum(int(r["HR"].split('/')[0]) for r in resultados)
-                total_hr_eval = sum(int(r["HR"].split('/')[1]) for r in resultados)
                 total_k_acc = sum(int(r["Ponches"].split('/')[0]) for r in resultados)
                 total_k_eval = sum(int(r["Ponches"].split('/')[1]) for r in resultados)
                 total_hits_acc = sum(int(r["Hits"].split('/')[0]) for r in resultados)
@@ -1188,10 +831,9 @@ if st.session_state.df_mlb is not None:
 
                 st.markdown("---")
                 st.markdown("### 📊 Resumen Acumulado (7 días)")
-                col1, col2, col3, col4 = st.columns(4)
+                col1, col2, col3 = st.columns(3)
                 col1.metric("Ganadores", f"{total_gan_acc}/{total_gan_eval}", f"{round(total_gan_acc/total_gan_eval*100,1)}%" if total_gan_eval else "0%")
-                col2.metric("Jonrones", f"{total_hr_acc}/{total_hr_eval}", f"{round(total_hr_acc/total_hr_eval*100,1)}%" if total_hr_eval else "0%")
-                col3.metric("Ponches", f"{total_k_acc}/{total_k_eval}", f"{round(total_k_acc/total_k_eval*100,1)}%" if total_k_eval else "0%")
-                col4.metric("Hits (1+)", f"{total_hits_acc}/{total_hits_eval}", f"{round(total_hits_acc/total_hits_eval*100,1)}%" if total_hits_eval else "0%")
+                col2.metric("Ponches", f"{total_k_acc}/{total_k_eval}", f"{round(total_k_acc/total_k_eval*100,1)}%" if total_k_eval else "0%")
+                col3.metric("Hits (1+)", f"{total_hits_acc}/{total_hits_eval}", f"{round(total_hits_acc/total_hits_eval*100,1)}%" if total_hits_eval else "0%")
             else:
                 st.warning("No se encontraron juegos finalizados en los últimos 7 días.")
