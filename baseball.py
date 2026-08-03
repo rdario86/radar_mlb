@@ -13,7 +13,7 @@ from scipy.stats import binom
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
-st.markdown("Proyección Sabermétrica y Evaluación de Relevistas (Bullpen)")
+st.markdown("Proyección Sabermétrica")
 st.markdown("---")
 
 MAX_DEPTH_ELO = 5       
@@ -691,7 +691,7 @@ if st.session_state.df_mlb is not None:
 
                         resultados_jornada.sort(key=lambda x: x['raw_time'])
                         st.session_state.resultados_jornada = resultados_jornada
-                        st.success("✅ Análisis completado integrando Abridores (66%) y Relevistas (34% + Factor Fatiga).")
+                        st.success("✅ Análisis completado.")
 
         if "resultados_jornada" in st.session_state and st.session_state.resultados_jornada is not None:
             resultados_jornada = st.session_state.resultados_jornada
