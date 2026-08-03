@@ -926,7 +926,7 @@ if st.session_state.df_mlb is not None:
                 if clave_hr in st.session_state and st.session_state[clave_hr] is not None:
                     actualizada = actualizar_evaluacion_hr(st.session_state[clave_hr], st.session_state.fecha_hoy)
                     st.session_state[clave_hr] = actualizada
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.warning("Primero genera la selección.")
 
@@ -967,7 +967,7 @@ if st.session_state.df_mlb is not None:
                 if clave_k in st.session_state and st.session_state[clave_k] is not None:
                     actualizada = actualizar_evaluacion_k(st.session_state[clave_k], st.session_state.fecha_hoy)
                     st.session_state[clave_k] = actualizada
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.warning("Primero genera la selección.")
 
@@ -1008,7 +1008,7 @@ if st.session_state.df_mlb is not None:
                 if clave_hits in st.session_state and st.session_state[clave_hits] is not None:
                     actualizada = actualizar_evaluacion_hits(st.session_state[clave_hits], st.session_state.fecha_hoy)
                     st.session_state[clave_hits] = actualizada
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.warning("Primero genera la selección.")
 
