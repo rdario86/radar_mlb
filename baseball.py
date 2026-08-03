@@ -177,6 +177,7 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
         return avg_whip
     except: return avg_whip
 
+# --- FUNCIÓN CORREGIDA: MÉTRICAS DEL BULLPEN ---
 def get_bullpen_metrics(team_id, fecha_corte):
     avg_whip = 1.30 
     if not team_id: return avg_whip
@@ -191,8 +192,8 @@ def get_bullpen_metrics(team_id, fecha_corte):
         
         if 'teams' not in raw_data or len(raw_data['teams']) == 0: return avg_whip
         
-        # FIX: Reemplazado 'teamStats' por 'stats' para extraer los datos reales de la API
-        stats_blocks = raw_data['teams'][0].get('stats', [])
+        # CORRECCIÓN VITAL: Para equipos, la API usa 'teamStats', NO 'stats'
+        stats_blocks = raw_data['teams'][0].get('teamStats', [])
         if not stats_blocks: return avg_whip
         
         splits = []
@@ -426,8 +427,8 @@ def get_strikeout_hunters(fecha_hoy):
                 
                 opp_ks = 0; opp_pa = 1
                 try:
-                    # FIX: Reemplazado 'teamStats' por 'stats'
-                    t_stats_blocks = team_raw['teams'][0].get('stats', [])
+                    # CORRECCIÓN VITAL: Para equipos, la API usa 'teamStats', NO 'stats'
+                    t_stats_blocks = team_raw['teams'][0].get('teamStats', [])
                     ks_equipo_hoy = 0; pa_equipo_hoy = 0
                     for b in t_stats_blocks:
                         if b.get('type', {}).get('displayName') == 'season':
