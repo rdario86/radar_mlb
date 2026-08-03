@@ -177,33 +177,13 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
         return avg_whip
     except: return avg_whip
 
-# --- FUNCIÓN CORREGIDA: MÉTRICAS DEL BULLPEN ---
+
+# --- NUEVO MÉTODO BLINDADO: EXTRACCIÓN DIRECTA DESDE BOXSCORES ---
 def get_bullpen_metrics(team_id, fecha_corte):
     avg_whip = 1.30 
     if not team_id: return avg_whip
     
     try:
-        anio = str(fecha_corte)[:4]
-        raw_data = statsapi.get('teams', {
-            'teamId': team_id, 
-            'season': anio,
-            'hydrate': f'stats(group=[pitching],type=[season,gameLog],season={anio})'
-        })
-        
-        if 'teams' not in raw_data or len(raw_data['teams']) == 0: return avg_whip
-        
-        # CORRECCIÓN VITAL: Para equipos, la API usa 'teamStats', NO 'stats'
-        stats_blocks = raw_data['teams'][0].get('teamStats', [])
-        if not stats_blocks: return avg_whip
-        
-        splits = []
-        for b in stats_blocks:
-            if b.get('type', {}).get('displayName') == 'gameLog':
-                splits = b.get('splits', [])
-                break
-                
-        if not splits: return avg_whip
-        
         dt_corte = datetime.datetime.strptime(fecha_corte, '%Y-%m-%d')
         dt_7d = dt_corte - datetime.timedelta(days=7)
         dt_3d = dt_corte - datetime.timedelta(days=3)
@@ -211,41 +191,62 @@ def get_bullpen_metrics(team_id, fecha_corte):
         str_7d = dt_7d.strftime('%Y-%m-%d')
         str_3d = dt_3d.strftime('%Y-%m-%d')
         
+        # 1. Buscamos todos los juegos del equipo en los últimos 7 días
+        juegos = statsapi.schedule(team=team_id, start_date=str_7d, end_date=fecha_corte)
+        if not juegos: return avg_whip
+        
         total_hits_7d = 0; total_bb_7d = 0; total_outs_7d = 0
         bp_outs_3d = 0
         
-        for s in splits:
-            game_date = s.get('date', '')
-            if str_7d <= game_date < fecha_corte:
-                stt = s.get('stat', {})
-                hits = int(stt.get('hits', 0))
-                bb = int(stt.get('baseOnBalls', 0))
+        for juego in juegos:
+            if juego.get('status') not in ['Final', 'Game Over']: continue
+            
+            game_date = juego.get('game_date', '')
+            game_id = juego.get('game_id')
+            if not game_id: continue
+            
+            try:
+                # 2. Entramos a la ficha técnica de cada juego (100% confiable)
+                box = statsapi.boxscore_data(game_id)
+                team_side = 'home' if juego.get('home_id') == team_id else 'away'
                 
-                ip_str = str(stt.get('inningsPitched', '0.0'))
+                # 3. Extraemos el total de pitcheo del equipo para ese juego
+                team_pitching = box.get(team_side, {}).get('teamStats', {}).get('pitching', {})
+                if not team_pitching: continue
+                
+                hits = int(team_pitching.get('hits', 0))
+                bb = int(team_pitching.get('baseOnBalls', 0))
+                ip_str = str(team_pitching.get('inningsPitched', '0.0'))
+                
                 if '.' in ip_str:
                     full, frac = ip_str.split('.')
                     outs = (int(full) * 3) + int(frac)
                 else:
                     outs = int(ip_str) * 3
                     
+                # Sumamos al acumulado semanal
                 total_hits_7d += hits
                 total_bb_7d += bb
                 total_outs_7d += outs
                 
+                # Medidor de Fatiga: Solo cuenta la carga de los últimos 3 días
                 if str_3d <= game_date < fecha_corte:
-                    bp_outs = max(0, outs - 15) 
+                    bp_outs = max(0, outs - 15) # Asumimos que los primeros 15 outs los hizo el abridor
                     bp_outs_3d += bp_outs
-                    
+            except: pass
+                
         if total_outs_7d == 0: return avg_whip
         
+        # Calculamos el WHIP real del pitcheo del equipo
         whip_7d = (total_hits_7d + total_bb_7d) / (total_outs_7d / 3.0)
         
+        # Penalización por Fatiga: Si el bullpen ha estado sobreutilizado
         fatigue_mod = 1.0
         if bp_outs_3d > 45:
             fatigue_mod = 1.0 + ((bp_outs_3d - 45) * 0.005) 
             
         final_whip = round(whip_7d * fatigue_mod, 2)
-        return max(0.90, min(2.50, final_whip))
+        return max(0.85, min(2.50, final_whip))
     except Exception: 
         return avg_whip
 
@@ -422,12 +423,11 @@ def get_strikeout_hunters(fecha_hoy):
                 team_raw = statsapi.get('teams', {
                     'teamId': opp_id, 
                     'season': anio_str,
-                    'hydrate': f'stats(group=[hitting],type=[season,gameLog],season={anio_str})'
+                    'hydrate': f'teamStats(group=[hitting],type=[season,gameLog],season={anio_str})'
                 })
                 
                 opp_ks = 0; opp_pa = 1
                 try:
-                    # CORRECCIÓN VITAL: Para equipos, la API usa 'teamStats', NO 'stats'
                     t_stats_blocks = team_raw['teams'][0].get('teamStats', [])
                     ks_equipo_hoy = 0; pa_equipo_hoy = 0
                     for b in t_stats_blocks:
