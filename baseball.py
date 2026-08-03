@@ -13,7 +13,7 @@ from scipy.stats import binom
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
 st.title("⚾ Predicción MLB: Radar Diario Automatizado")
-st.markdown("Proyección Sabermétrica")
+st.markdown("Proyección Sabermétrica y Evaluación de Relevistas (Bullpen)")
 st.markdown("---")
 
 MAX_DEPTH_ELO = 5       
@@ -177,11 +177,19 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
         return avg_whip
     except: return avg_whip
 
-# --- NUEVA FUNCIÓN: MÉTRICAS DEL BULLPEN EN LOS ÚLTIMOS 7 DÍAS ---
+# --- FUNCIÓN CORREGIDA: MÉTRICAS DEL BULLPEN CON WHIP ESTÁNDAR 1.30 ---
 def get_bullpen_metrics(team_id, fecha_corte):
-    avg_whip = 1.35 
+    avg_whip = 1.30 
+    if not team_id: return avg_whip
+    
     try:
-        raw_data = statsapi.get('teams', {'teamId': team_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
+        anio = str(fecha_corte)[:4]
+        raw_data = statsapi.get('teams', {
+            'teamId': team_id, 
+            'season': anio,
+            'hydrate': f'stats(group=[pitching],type=[season,gameLog],season={anio})'
+        })
+        
         if 'teams' not in raw_data or len(raw_data['teams']) == 0: return avg_whip
         
         stats_blocks = raw_data['teams'][0].get('teamStats', [])
@@ -223,24 +231,22 @@ def get_bullpen_metrics(team_id, fecha_corte):
                 total_bb_7d += bb
                 total_outs_7d += outs
                 
-                # Medidor de Fatiga (Últimos 3 días)
                 if str_3d <= game_date < fecha_corte:
-                    # Asumimos que los primeros 15 outs (5 innings) son del abridor. 
-                    # El resto es carga de trabajo pura del bullpen.
-                    bp_outs = max(0, outs - 15)
+                    bp_outs = max(0, outs - 15) 
                     bp_outs_3d += bp_outs
                     
         if total_outs_7d == 0: return avg_whip
         
         whip_7d = (total_hits_7d + total_bb_7d) / (total_outs_7d / 3.0)
         
-        # Penalización por Fatiga: Si el bullpen lanzó más de 45 outs en los últimos 3 días.
         fatigue_mod = 1.0
         if bp_outs_3d > 45:
-            fatigue_mod = 1.0 + ((bp_outs_3d - 45) * 0.005) # Sube el WHIP proyectado
+            fatigue_mod = 1.0 + ((bp_outs_3d - 45) * 0.005) 
             
-        return round(whip_7d * fatigue_mod, 2)
-    except: return avg_whip
+        final_whip = round(whip_7d * fatigue_mod, 2)
+        return max(0.90, min(2.50, final_whip))
+    except Exception: 
+        return avg_whip
 
 def get_hit_hunters(anio, fecha_hoy):
     try:
@@ -411,7 +417,13 @@ def get_strikeout_hunters(fecha_hoy):
                 ks_sorted = sorted(ks_list)
                 median_k = ks_sorted[len(ks_sorted)//2] if ks_sorted else 0
 
-                team_raw = statsapi.get('teams', {'teamId': opp_id, 'hydrate': 'stats(group=[hitting],type=[season,gameLog])'})
+                anio_str = str(fecha_hoy)[:4]
+                team_raw = statsapi.get('teams', {
+                    'teamId': opp_id, 
+                    'season': anio_str,
+                    'hydrate': f'stats(group=[hitting],type=[season,gameLog],season={anio_str})'
+                })
+                
                 opp_ks = 0; opp_pa = 1
                 try:
                     t_stats_blocks = team_raw['teams'][0].get('teamStats', [])
@@ -429,6 +441,7 @@ def get_strikeout_hunters(fecha_hoy):
                     opp_ks = max(0, opp_ks - ks_equipo_hoy)
                     opp_pa = max(1, opp_pa - pa_equipo_hoy)
                 except: pass
+                
                 opp_k_pct = opp_ks / opp_pa if opp_pa > 1 else 0.225
                 factor_rival = (opp_k_pct / 0.225) ** 0.5
 
@@ -480,7 +493,6 @@ def get_strikeout_hunters(fecha_hoy):
     except Exception:
         return []
         
-# --- FUNCION PARA GENERAR EXCEL EN MEMORIA ---
 def convertir_df_a_excel(df, sheet_name="Hoja1"):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -589,7 +601,7 @@ if st.session_state.df_mlb is not None:
                             
                             home_id = juego.get('home_id')
                             away_id = juego.get('away_id')
-                            
+
                             p_local, p_visita = get_starting_pitchers(juego)
 
                             if e_local not in MLB_TEAM_WHITELIST or e_visita not in MLB_TEAM_WHITELIST: continue
@@ -624,13 +636,10 @@ if st.session_state.df_mlb is not None:
                             whip_l = get_pitcher_whip(p_local, st.session_state.fecha_hoy)
                             whip_v = get_pitcher_whip(p_visita, st.session_state.fecha_hoy)
                             
-                            # --- NUEVA LÓGICA DE BULLPEN ---
                             whip_bp_l = get_bullpen_metrics(home_id, st.session_state.fecha_hoy)
                             whip_bp_v = get_bullpen_metrics(away_id, st.session_state.fecha_hoy)
 
                             prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
-                            
-                            # Ajuste balanceado: Abridor vs Bullpen
                             pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
 
                             prob_final_local = (prob + (racha_l - racha_v)*PESO_RACHA + (h2h - 0.5)*PESO_H2H +
@@ -680,7 +689,6 @@ if st.session_state.df_mlb is not None:
                 for j, col in enumerate(row.index):
                     if col in ['⚾ Abridor (V)', '⚾ Abridor (L)', '🔥 BP (V)', '🔥 BP (L)']:
                         try:
-                            # Filtra tanto el texto (1.30) del abridor como el puro número del BP
                             val_str = str(row[col])
                             whip = float(val_str.split('(')[-1].replace(')', '')) if '(' in val_str else float(val_str)
                             
@@ -890,7 +898,6 @@ if st.session_state.df_mlb is not None:
                     whip_l = get_pitcher_whip(p_local, fecha_str)
                     whip_v = get_pitcher_whip(p_visita, fecha_str)
                     
-                    # Lógica de Bullpen para Auditoría Histórica
                     whip_bp_l = get_bullpen_metrics(home_id, fecha_str)
                     whip_bp_v = get_bullpen_metrics(away_id, fecha_str)
 
