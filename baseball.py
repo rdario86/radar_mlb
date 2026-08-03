@@ -460,9 +460,9 @@ def get_strikeout_hunters(fecha_hoy):
                 avg_ip = (l7_outs / 3.0) / juegos_lanzados
                 factor_ip = min(1.0, avg_ip / 6.0)
 
-                proj_k = median_k * factor_rival * factor_ip
+                proj_k = (median_k * factor_rival * factor_ip) * 0.90
                 proj_k_rounded = round(proj_k, 3)
-                meta_ks = int(round(proj_k))
+                meta_ks = int(proj_k)
 
                 prob_meta = 1 - poisson.cdf(meta_ks - 1, proj_k) if proj_k > 0 else 0.0
                 prob_meta_pct = int(round(prob_meta * 100))
