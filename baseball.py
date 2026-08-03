@@ -461,6 +461,109 @@ def get_hit_hunters(anio, fecha_hoy):
     except Exception:
         return []
 
+def actualizar_evaluacion_hr(lista_original, fecha):
+    nueva_lista = []
+    for jugador in lista_original:
+        nombre = jugador["⚾ Bateador"]
+        equipo = jugador["👕 Equipo"]
+        juegos_dia = statsapi.schedule(date=fecha, sportId=1)
+        hr_real = 0
+        ab_real = 0
+        for juego in juegos_dia:
+            if juego.get('status') in ['Final', 'Game Over'] and \
+               (juego.get('home_name') == equipo or juego.get('away_name') == equipo):
+                game_id = juego.get('game_id')
+                try:
+                    box = statsapi.boxscore_data(game_id)
+                    for team in ['home', 'away']:
+                        players = box.get(team, {}).get('players', {})
+                        for pid, pdata in players.items():
+                            full = pdata.get('person', {}).get('fullName', '')
+                            if full == nombre:
+                                stats = pdata.get('stats', {}).get('batting', {})
+                                hr_real = int(stats.get('homeRuns', 0))
+                                ab_real = int(stats.get('atBats', 0))
+                                break
+                except:
+                    pass
+        if ab_real == 0:
+            eval_nueva = "🚫 No jugó"
+        else:
+            eval_nueva = "✅ Acierto" if hr_real > 0 else "❌ Fallo"
+        nuevo = jugador.copy()
+        nuevo["📝 Evaluación"] = eval_nueva
+        nueva_lista.append(nuevo)
+    return nueva_lista
+
+def actualizar_evaluacion_hits(lista_original, fecha):
+    nueva_lista = []
+    for jugador in lista_original:
+        nombre = jugador["⚾ Bateador"]
+        equipo = jugador["👕 Equipo"]
+        juegos_dia = statsapi.schedule(date=fecha, sportId=1)
+        hits_real = 0
+        ab_real = 0
+        for juego in juegos_dia:
+            if juego.get('status') in ['Final', 'Game Over'] and \
+               (juego.get('home_name') == equipo or juego.get('away_name') == equipo):
+                game_id = juego.get('game_id')
+                try:
+                    box = statsapi.boxscore_data(game_id)
+                    for team in ['home', 'away']:
+                        players = box.get(team, {}).get('players', {})
+                        for pid, pdata in players.items():
+                            full = pdata.get('person', {}).get('fullName', '')
+                            if full == nombre:
+                                stats = pdata.get('stats', {}).get('batting', {})
+                                hits_real = int(stats.get('hits', 0))
+                                ab_real = int(stats.get('atBats', 0))
+                                break
+                except:
+                    pass
+        if ab_real == 0:
+            eval_nueva = "🚫 No jugó"
+        else:
+            eval_nueva = "✅ Acierto" if hits_real >= 1 else "❌ Fallo"
+        nuevo = jugador.copy()
+        nuevo["📝 Evaluación"] = eval_nueva
+        nueva_lista.append(nuevo)
+    return nueva_lista
+
+def actualizar_evaluacion_k(lista_original, fecha):
+    nueva_lista = []
+    for pitcher in lista_original:
+        nombre = pitcher["⚾ Abridor"]
+        equipo = pitcher["👕 Equipo"]
+        meta_ks = int(pitcher["🎯 Proy. Ponches"].split()[0])
+        juegos_dia = statsapi.schedule(date=fecha, sportId=1)
+        ks_real = 0
+        outs_real = 0
+        for juego in juegos_dia:
+            if juego.get('status') in ['Final', 'Game Over'] and \
+               (juego.get('home_name') == equipo or juego.get('away_name') == equipo):
+                game_id = juego.get('game_id')
+                try:
+                    box = statsapi.boxscore_data(game_id)
+                    for team in ['home', 'away']:
+                        players = box.get(team, {}).get('players', {})
+                        for pid, pdata in players.items():
+                            full = pdata.get('person', {}).get('fullName', '')
+                            if full == nombre:
+                                stats = pdata.get('stats', {}).get('pitching', {})
+                                ks_real = int(stats.get('strikeOuts', 0))
+                                outs_real = int(stats.get('outs', 0))
+                                break
+                except:
+                    pass
+        if outs_real == 0:
+            eval_nueva = "🚫 No lanzó"
+        else:
+            eval_nueva = f"✅ Acierto ({ks_real} Ks)" if ks_real >= meta_ks else f"❌ Fallo ({ks_real} Ks)"
+        nuevo = pitcher.copy()
+        nuevo["📝 Evaluación"] = eval_nueva
+        nueva_lista.append(nuevo)
+    return nueva_lista
+
 def get_strikeout_hunters(fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
@@ -807,14 +910,25 @@ if st.session_state.df_mlb is not None:
 
     with tab2:
         st.markdown("### 💣 Radar de Jonrones: Filtro de Regresión + Localía")
-        if st.button("🔍 Escanear Mercado de Jonrones (Top 4 Limpio)", type="primary", use_container_width=True):
-            with st.spinner("Evaluando rachas y buscando jonrones reales de la jornada..."):
-                resultados_hr = get_hr_hunters(anio_sel, st.session_state.fecha_hoy)
-                if resultados_hr:
-                    st.session_state[f"resultados_hr_{st.session_state.fecha_hoy}"] = resultados_hr
+        col_gen, col_ver = st.columns(2)
+        with col_gen:
+            if st.button("🔍 Generar Selección", type="primary", use_container_width=True):
+                with st.spinner("Buscando cazadores de jonrones..."):
+                    resultados_hr = get_hr_hunters(anio_sel, st.session_state.fecha_hoy)
+                    if resultados_hr:
+                        st.session_state[f"resultados_hr_{st.session_state.fecha_hoy}"] = resultados_hr
+                    else:
+                        st.session_state[f"resultados_hr_{st.session_state.fecha_hoy}"] = None
+                        st.warning("No se detectaron líderes válidos.")
+        with col_ver:
+            if st.button("🔄 Verificar Resultados", use_container_width=True):
+                clave_hr = f"resultados_hr_{st.session_state.fecha_hoy}"
+                if clave_hr in st.session_state and st.session_state[clave_hr] is not None:
+                    actualizada = actualizar_evaluacion_hr(st.session_state[clave_hr], st.session_state.fecha_hoy)
+                    st.session_state[clave_hr] = actualizada
+                    st.experimental_rerun()
                 else:
-                    st.session_state[f"resultados_hr_{st.session_state.fecha_hoy}"] = None
-                    st.warning("No se detectaron líderes válidos o datos para esta fecha.")
+                    st.warning("Primero genera la selección.")
 
         clave_hr = f"resultados_hr_{st.session_state.fecha_hoy}"
         if clave_hr in st.session_state and st.session_state[clave_hr] is not None:
@@ -833,18 +947,29 @@ if st.session_state.df_mlb is not None:
                 c2.metric("Jonrones Acertados", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
         elif clave_hr not in st.session_state:
-            st.info("Presiona el botón para escanear el mercado de jonrones.")
+            st.info("Presiona 'Generar Selección' para obtener candidatos.")
 
     with tab3:
         st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival")
-        if st.button("🎯 Cazar Ponches del Día (Top 4)", type="primary", use_container_width=True):
-            with st.spinner("Haciendo el cruce de vulnerabilidad y auditando ponches finales..."):
-                resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
-                if resultados_k:
-                    st.session_state[f"resultados_k_{st.session_state.fecha_hoy}"] = resultados_k
+        col_gen, col_ver = st.columns(2)
+        with col_gen:
+            if st.button("🎯 Generar Selección", type="primary", use_container_width=True):
+                with st.spinner("Buscando lanzadores..."):
+                    resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
+                    if resultados_k:
+                        st.session_state[f"resultados_k_{st.session_state.fecha_hoy}"] = resultados_k
+                    else:
+                        st.session_state[f"resultados_k_{st.session_state.fecha_hoy}"] = None
+                        st.warning("No hay datos de pitcheo.")
+        with col_ver:
+            if st.button("🔄 Verificar Resultados", use_container_width=True):
+                clave_k = f"resultados_k_{st.session_state.fecha_hoy}"
+                if clave_k in st.session_state and st.session_state[clave_k] is not None:
+                    actualizada = actualizar_evaluacion_k(st.session_state[clave_k], st.session_state.fecha_hoy)
+                    st.session_state[clave_k] = actualizada
+                    st.experimental_rerun()
                 else:
-                    st.session_state[f"resultados_k_{st.session_state.fecha_hoy}"] = None
-                    st.warning("No hay suficientes datos de pitcheo para evaluar esta jornada.")
+                    st.warning("Primero genera la selección.")
 
         clave_k = f"resultados_k_{st.session_state.fecha_hoy}"
         if clave_k in st.session_state and st.session_state[clave_k] is not None:
@@ -863,18 +988,29 @@ if st.session_state.df_mlb is not None:
                 c2.metric("Metas Superadas", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
         elif clave_k not in st.session_state:
-            st.info("Presiona el botón para cazar ponches del día.")
+            st.info("Presiona 'Generar Selección' para obtener candidatos.")
                 
     with tab4:
         st.markdown("### 🔹 Radar de Hits: Probabilidad de 1+ Imparables")
-        if st.button("🔎 Buscar Bateadores con 1+ Hits (Top 4)", type="primary", use_container_width=True):
-            with st.spinner("Calculando probabilidades de dar hits..."):
-                resultados_hits = get_hit_hunters(anio_sel, st.session_state.fecha_hoy)
-                if resultados_hits:
-                    st.session_state[f"resultados_hits_{st.session_state.fecha_hoy}"] = resultados_hits
+        col_gen, col_ver = st.columns(2)
+        with col_gen:
+            if st.button("🔎 Generar Selección", type="primary", use_container_width=True):
+                with st.spinner("Buscando bateadores..."):
+                    resultados_hits = get_hit_hunters(anio_sel, st.session_state.fecha_hoy)
+                    if resultados_hits:
+                        st.session_state[f"resultados_hits_{st.session_state.fecha_hoy}"] = resultados_hits
+                    else:
+                        st.session_state[f"resultados_hits_{st.session_state.fecha_hoy}"] = None
+                        st.warning("No se encontraron bateadores.")
+        with col_ver:
+            if st.button("🔄 Verificar Resultados", use_container_width=True):
+                clave_hits = f"resultados_hits_{st.session_state.fecha_hoy}"
+                if clave_hits in st.session_state and st.session_state[clave_hits] is not None:
+                    actualizada = actualizar_evaluacion_hits(st.session_state[clave_hits], st.session_state.fecha_hoy)
+                    st.session_state[clave_hits] = actualizada
+                    st.experimental_rerun()
                 else:
-                    st.session_state[f"resultados_hits_{st.session_state.fecha_hoy}"] = None
-                    st.warning("No se encontraron bateadores con datos suficientes para hoy.")
+                    st.warning("Primero genera la selección.")
 
         clave_hits = f"resultados_hits_{st.session_state.fecha_hoy}"
         if clave_hits in st.session_state and st.session_state[clave_hits] is not None:
@@ -893,7 +1029,7 @@ if st.session_state.df_mlb is not None:
                 c2.metric("Aciertos (1+ Hits)", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
         elif clave_hits not in st.session_state:
-            st.info("Presiona el botón para buscar bateadores con alta probabilidad de 1+ hits.")
+            st.info("Presiona 'Generar Selección' para obtener candidatos.")
 
     with tab5:
         st.markdown("### 🧮 Calculadora de Valor Esperado (+EV)")
