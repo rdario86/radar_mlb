@@ -177,8 +177,7 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
         return avg_whip
     except: return avg_whip
 
-
-# --- NUEVO MÉTODO BLINDADO: EXTRACCIÓN DIRECTA DESDE BOXSCORES ---
+# --- NUEVO CÁLCULO QUIRÚRGICO DE BULLPEN ---
 def get_bullpen_metrics(team_id, fecha_corte):
     avg_whip = 1.30 
     if not team_id: return avg_whip
@@ -191,7 +190,6 @@ def get_bullpen_metrics(team_id, fecha_corte):
         str_7d = dt_7d.strftime('%Y-%m-%d')
         str_3d = dt_3d.strftime('%Y-%m-%d')
         
-        # 1. Buscamos todos los juegos del equipo en los últimos 7 días
         juegos = statsapi.schedule(team=team_id, start_date=str_7d, end_date=fecha_corte)
         if not juegos: return avg_whip
         
@@ -206,47 +204,60 @@ def get_bullpen_metrics(team_id, fecha_corte):
             if not game_id: continue
             
             try:
-                # 2. Entramos a la ficha técnica de cada juego (100% confiable)
                 box = statsapi.boxscore_data(game_id)
                 team_side = 'home' if juego.get('home_id') == team_id else 'away'
                 
-                # 3. Extraemos el total de pitcheo del equipo para ese juego
-                team_pitching = box.get(team_side, {}).get('teamStats', {}).get('pitching', {})
-                if not team_pitching: continue
+                # Lista de TODOS los lanzadores del equipo en ESE juego
+                pitchers_list = box.get(team_side, {}).get('pitchers', [])
                 
-                hits = int(team_pitching.get('hits', 0))
-                bb = int(team_pitching.get('baseOnBalls', 0))
-                ip_str = str(team_pitching.get('inningsPitched', '0.0'))
+                # Si solo hay 1 lanzador, fue un juego completo (no hubo bullpen)
+                if len(pitchers_list) <= 1: continue
                 
-                if '.' in ip_str:
-                    full, frac = ip_str.split('.')
-                    outs = (int(full) * 3) + int(frac)
-                else:
-                    outs = int(ip_str) * 3
+                # AISLAMOS EL BULLPEN: Ignoramos al [0] (el abridor)
+                relevistas = pitchers_list[1:]
+                
+                outs_juego_bp = 0
+                
+                for pid in relevistas:
+                    p_key = f"ID{pid}"
+                    p_stats = box.get(team_side, {}).get('players', {}).get(p_key, {}).get('stats', {}).get('pitching', {})
                     
-                # Sumamos al acumulado semanal
-                total_hits_7d += hits
-                total_bb_7d += bb
-                total_outs_7d += outs
-                
-                # Medidor de Fatiga: Solo cuenta la carga de los últimos 3 días
+                    if not p_stats: continue
+                        
+                    hits = int(p_stats.get('hits', 0))
+                    bb = int(p_stats.get('baseOnBalls', 0))
+                    ip_str = str(p_stats.get('inningsPitched', '0.0'))
+                    
+                    if '.' in ip_str:
+                        full, frac = ip_str.split('.')
+                        outs = (int(full) * 3) + int(frac)
+                    else:
+                        outs = int(ip_str) * 3
+                        
+                    total_hits_7d += hits
+                    total_bb_7d += bb
+                    total_outs_7d += outs
+                    outs_juego_bp += outs
+                    
+                # Fatiga: Sumar solo carga real del bullpen en los últimos 3 días
                 if str_3d <= game_date < fecha_corte:
-                    bp_outs = max(0, outs - 15) # Asumimos que los primeros 15 outs los hizo el abridor
-                    bp_outs_3d += bp_outs
+                    bp_outs_3d += outs_juego_bp
+                    
             except: pass
                 
         if total_outs_7d == 0: return avg_whip
         
-        # Calculamos el WHIP real del pitcheo del equipo
+        # WHIP EXCLUSIVO DE RELEVISTAS
         whip_7d = (total_hits_7d + total_bb_7d) / (total_outs_7d / 3.0)
         
-        # Penalización por Fatiga: Si el bullpen ha estado sobreutilizado
+        # Penalización por Fatiga Real: Si el bullpen lanzó más de 30 outs (~10 innings) en 3 días.
         fatigue_mod = 1.0
-        if bp_outs_3d > 45:
-            fatigue_mod = 1.0 + ((bp_outs_3d - 45) * 0.005) 
+        if bp_outs_3d > 30:
+            fatigue_mod = 1.0 + ((bp_outs_3d - 30) * 0.008) 
             
         final_whip = round(whip_7d * fatigue_mod, 2)
-        return max(0.85, min(2.50, final_whip))
+        # Tolerancia ampliada: Los relevistas pueden ser un desastre total o intocables
+        return max(0.80, min(3.00, final_whip))
     except Exception: 
         return avg_whip
 
