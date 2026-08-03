@@ -485,7 +485,7 @@ if st.session_state.df_mlb is not None:
     "🔥 Caza-Ponches",
     "🔹 Caza-Hits",
     "🧮 Calculadora +EV",
-    "📊 Auditoría Histórica"
+    "📊 Auditoría Semanal"
 ])
     
     with tab1:
