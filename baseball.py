@@ -602,9 +602,9 @@ def get_detailed_bullpen_stats(team_id, fecha_corte):
     return res
 
 @st.cache_resource(show_spinner="🧠 Entrenando IA (Esto tomará unos 15 segundos la primera vez)...")
-def entrenar_modelo_ia(df_filtrado):
-    # Recibimos el DataFrame directamente como argumento (Regla de oro de Streamlit)
-    df_train_base = df_filtrado.copy()
+def entrenar_modelo_ia(fecha_corte, total_juegos, _df_filtrado):
+    # El guion bajo en _df_filtrado evita que Streamlit colapse escaneando el Excel en cada clic
+    df_train_base = _df_filtrado.copy()
     df_train_base = df_train_base.sort_values('Date').reset_index(drop=True)
     
     x_racha_diff, x_h2h, x_luck_diff, x_split_diff, y_win = [], [], [], [], []
@@ -720,9 +720,9 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
         
         if len(df_filtrado) > 0:
             st.sidebar.info("🧠 Cargando IA... (Usando Caché para máxima velocidad ⚡)")
-            # Le pasamos el DataFrame completo. Streamlit lo encripta en milisegundos y lo acepta.
-            clf = entrenar_modelo_ia(df_filtrado)
-    
+            # Aquí le pasamos la fecha, el tamaño y el DataFrame (que ahora será ignorado por el escáner)
+            clf = entrenar_modelo_ia(st.session_state.fecha_hoy, len(df_filtrado), df_filtrado)
+            
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "📅 Cartelera del Día",
             "🔥 Caza-Ponches",
