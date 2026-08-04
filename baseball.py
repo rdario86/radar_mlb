@@ -16,11 +16,7 @@ st.title("⚾ Predicción MLB: Radar Diario Automatizado")
 st.markdown("Proyección Sabermétrica")
 st.markdown("---")
 
-MAX_DEPTH_ELO = 5       
-PESO_RACHA = 0.08       
-PESO_H2H = 0.12         
-PESO_PITAGORICO = 0.10  
-PESO_SPLITS = 0.10         
+MAX_DEPTH_ELO = 5            
 
 MLB_TEAM_WHITELIST = [
     "Arizona Diamondbacks", "Atlanta Braves", "Baltimore Orioles", "Boston Red Sox", 
@@ -674,8 +670,57 @@ if st.session_state.df_mlb is not None:
     df_filtrado = df_historico[df_historico['Date'] < st.session_state.fecha_hoy].copy()
     
     if len(df_filtrado) > 0:
-        df_filtrado['Win'] = (df_filtrado['Carreras_Local'] > df_filtrado['Carreras_Visitante']).astype(int)
-        clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df_filtrado[['Elo_L', 'Elo_V']], df_filtrado['Win'])
+        st.sidebar.info("🧠 Entrenando IA con variables avanzadas. Esto tomará unos segundos...")
+        df_filtrado = df_filtrado.sort_values('Date').reset_index(drop=True)
+        
+        # Crear listas para almacenar las variables de entrenamiento
+        x_racha_diff, x_h2h, x_luck_diff, x_split_diff, y_win = [], [], [], [], []
+        
+        # Solo entrenamos con los últimos 600 juegos para no ralentizar Streamlit
+        # y usar la tendencia más reciente de la liga.
+        df_train = df_filtrado.tail(600).copy()
+        
+        for idx, row in df_train.iterrows():
+            fecha_juego = row['Date']
+            e_local = row['Local']
+            e_visita = row['Visitante']
+            
+            # Cortamos el historial: solo vemos lo que pasó ANTES de este juego
+            df_pasado = df_filtrado[df_filtrado['Date'] < fecha_juego]
+            
+            # Si no hay historial suficiente (principio de temporada), usamos valores neutros
+            if len(df_pasado) < 50:
+                x_racha_diff.append(0.0)
+                x_h2h.append(0.5)
+                x_luck_diff.append(0.0)
+                x_split_diff.append(0.0)
+            else:
+                r_l = get_recent_form(e_local, df_pasado)
+                r_v = get_recent_form(e_visita, df_pasado)
+                x_racha_diff.append(r_l - r_v)
+                
+                x_h2h.append(get_h2h_wins(e_local, e_visita, df_pasado))
+                
+                luck_l = get_pythagorean_luck(e_local, df_pasado)
+                luck_v = get_pythagorean_luck(e_visita, df_pasado)
+                x_luck_diff.append(luck_l - luck_v)
+                
+                s_l, s_v = get_splits_win_pct(e_local, e_visita, df_pasado)
+                x_split_diff.append(s_l - s_v)
+                
+            y_win.append(1 if row['Carreras_Local'] > row['Carreras_Visitante'] else 0)
+            
+        # Agregamos las nuevas columnas al dataframe de entrenamiento
+        df_train['Racha_Diff'] = x_racha_diff
+        df_train['H2H_L_WinPct'] = x_h2h
+        df_train['Luck_Diff'] = x_luck_diff
+        df_train['Split_Diff'] = x_split_diff
+        df_train['Win'] = y_win
+        
+        # ENTRENAMIENTO MULTIVARIABLE (La IA ahora ve todo)
+        features = ['Elo_L', 'Elo_V', 'Racha_Diff', 'H2H_L_WinPct', 'Luck_Diff', 'Split_Diff']
+        clf = RandomForestClassifier(n_estimators=150, max_depth=MAX_DEPTH_ELO, random_state=42)
+        clf.fit(df_train[features], df_train['Win'])
     
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📅 Cartelera del Día",
@@ -755,8 +800,27 @@ if st.session_state.df_mlb is not None:
                             prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
                             pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
 
-                            prob_final_local = (prob + (racha_l - racha_v)*PESO_RACHA + (h2h - 0.5)*PESO_H2H +
-                                                (luck_l - luck_v)*PESO_PITAGORICO + (split_l - split_v)*PESO_SPLITS + pitcher_adj)
+                            # Calculamos las variables del día de hoy
+                            racha_diff = get_recent_form(e_local, df_filtrado) - get_recent_form(e_visita, df_filtrado)
+                            h2h_l = get_h2h_wins(e_local, e_visita, df_filtrado)
+                            luck_diff = get_pythagorean_luck(e_local, df_filtrado) - get_pythagorean_luck(e_visita, df_filtrado)
+                            s_l, s_v = get_splits_win_pct(e_local, e_visita, df_filtrado)
+                            split_diff = s_l - s_v
+
+                            # Extraemos a los lanzadores
+                            whip_l = get_pitcher_whip(p_local, st.session_state.fecha_hoy)
+                            whip_v = get_pitcher_whip(p_visita, st.session_state.fecha_hoy)
+                            whip_bp_l = get_bullpen_metrics(home_id, st.session_state.fecha_hoy)
+                            whip_bp_v = get_bullpen_metrics(away_id, st.session_state.fecha_hoy)
+
+                            # 1. PREDICCIÓN PURA DE LA IA (Machine Learning)
+                            X_hoy = np.array([[elo_l, elo_v, racha_diff, h2h_l, luck_diff, split_diff]])
+                            prob_ml = clf.predict_proba(X_hoy)[0][1]
+
+                            # 2. AJUSTE DE PITCHEO MANUAL (Hybrid Model)
+                            pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
+                            
+                            prob_final_local = prob_ml + pitcher_adj
 
                             ganador = e_local if prob_final_local > 0.5 else e_visita
                             pct_bruto = prob_final_local if prob_final_local > 0.5 else 1.0 - prob_final_local
