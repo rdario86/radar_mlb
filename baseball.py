@@ -712,7 +712,7 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
             st.sidebar.success("✅ Base de datos al día.")
         except Exception as e: st.sidebar.error(f"Error Crítico: {e}")
 
-if st.session_state.df_mlb is not None:
+    if st.session_state.df_mlb is not None:
         df_historico = st.session_state.df_mlb.copy()
         df_filtrado = df_historico[df_historico['Date'] < st.session_state.fecha_hoy].copy()
         
