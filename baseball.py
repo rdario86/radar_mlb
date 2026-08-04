@@ -800,6 +800,9 @@ if st.session_state.df_mlb is not None:
                             prob = clf.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
                             pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
 
+                            prob_final_local = (prob + (racha_l - racha_v)*PESO_RACHA + (h2h - 0.5)*PESO_H2H +
+                                                (luck_l - luck_v)*PESO_PITAGORICO + (split_l - split_v)*PESO_SPLITS + pitcher_adj)
+
                             # Calculamos las variables del día de hoy
                             racha_diff = get_recent_form(e_local, df_filtrado) - get_recent_form(e_visita, df_filtrado)
                             h2h_l = get_h2h_wins(e_local, e_visita, df_filtrado)
