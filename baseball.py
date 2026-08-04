@@ -779,9 +779,7 @@ if st.session_state.df_mlb is not None:
                                 "✈️ Visitante": f"{e_visita} ({rec_v})",
                                 "🏠 Local": f"{e_local} ({rec_l})",
                                 "⚾ Abridor (V)": f"{p_visita or 'TBD'} ({whip_v:.2f})",
-                                "🔥 BP (V)": f"{whip_bp_v:.2f}",
                                 "⚾ Abridor (L)": f"{p_local or 'TBD'} ({whip_l:.2f})",
-                                "🔥 BP (L)": f"{whip_bp_l:.2f}",
                                 "🎯 Jugada Recomendada": jugada_str,
                                 "📊 Prob.": prob_str,
                                 "📝 Evaluación": eval_str,
@@ -800,7 +798,7 @@ if st.session_state.df_mlb is not None:
             def color_whip(row):
                 styles = [''] * len(row)
                 for j, col in enumerate(row.index):
-                    if col in ['⚾ Abridor (V)', '⚾ Abridor (L)', '🔥 BP (V)', '🔥 BP (L)']:
+                    if col in ['⚾ Abridor (V)', '⚾ Abridor (L)']:
                         try:
                             val_str = str(row[col])
                             whip = float(val_str.split('(')[-1].replace(')', '')) if '(' in val_str else float(val_str)
