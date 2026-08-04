@@ -504,6 +504,106 @@ def get_strikeout_hunters(fecha_hoy):
         return nuevo_top4
     except Exception:
         return []
+
+def get_detailed_pitcher_stats(pitcher_name, fecha_corte):
+    res = {"IP": "0.0", "H": 0, "BB": 0, "K": 0, "ER": 0, "ERA": "0.00", "WHIP": "0.00"}
+    if not pitcher_name or pitcher_name == 'TBD': return res
+    try:
+        players = statsapi.lookup_player(pitcher_name)
+        if not players: return res
+        player_id = players[0]['id']
+        raw_data = statsapi.get('people', {'personIds': player_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
+        if 'people' in raw_data and len(raw_data['people']) > 0:
+            person = raw_data['people'][0]
+            if 'stats' in person:
+                for stat_block in person['stats']:
+                    if stat_block.get('type', {}).get('displayName') == 'gameLog':
+                        splits = stat_block.get('splits', [])
+                        if splits:
+                            valid_splits = [s for s in splits if s.get('date', '') < fecha_corte]
+                            valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
+                            last_7 = valid_splits[:7]
+                            
+                            total_outs = 0; total_hits = 0; total_bb = 0; total_k = 0; total_er = 0
+                            for game in last_7:
+                                g_stats = game.get('stat', {})
+                                total_hits += int(g_stats.get('hits', 0))
+                                total_bb += int(g_stats.get('baseOnBalls', 0))
+                                total_k += int(g_stats.get('strikeOuts', 0))
+                                total_er += int(g_stats.get('earnedRuns', 0)) # Carreras Limpias
+                                ip_str = str(g_stats.get('inningsPitched', '0.0'))
+                                if '.' in ip_str:
+                                    full, frac = ip_str.split('.')
+                                    total_outs += (int(full) * 3) + int(frac)
+                                else:
+                                    total_outs += int(ip_str) * 3
+                                    
+                            if total_outs > 0:
+                                ip_calc = total_outs / 3.0
+                                res["IP"] = f"{int(total_outs//3)}.{total_outs%3}"
+                                res["H"] = total_hits
+                                res["BB"] = total_bb
+                                res["K"] = total_k
+                                res["ER"] = total_er
+                                res["ERA"] = f"{(total_er * 9) / ip_calc:.2f}"
+                                res["WHIP"] = f"{(total_hits + total_bb) / ip_calc:.2f}"
+    except Exception: pass
+    return res
+
+def get_detailed_bullpen_stats(team_id, fecha_corte):
+    res = {"IP": "0.0", "H": 0, "BB": 0, "K": 0, "ER": 0, "ERA": "0.00", "WHIP": "0.00"}
+    if not team_id: return res
+    try:
+        dt_corte = datetime.datetime.strptime(fecha_corte, '%Y-%m-%d')
+        dt_7d = dt_corte - datetime.timedelta(days=7)
+        str_7d = dt_7d.strftime('%Y-%m-%d')
+        
+        juegos = statsapi.schedule(team=team_id, start_date=str_7d, end_date=fecha_corte)
+        if not juegos: return res
+        
+        total_outs = 0; total_hits = 0; total_bb = 0; total_k = 0; total_er = 0
+        
+        for juego in juegos:
+            if juego.get('status') not in ['Final', 'Game Over']: continue
+            game_id = juego.get('game_id')
+            if not game_id: continue
+            
+            try:
+                box = statsapi.boxscore_data(game_id)
+                team_side = 'home' if juego.get('home_id') == team_id else 'away'
+                pitchers_list = box.get(team_side, {}).get('pitchers', [])
+                if len(pitchers_list) <= 1: continue # Solo lanzó el abridor
+                
+                relevistas = pitchers_list[1:] # Eliminamos al abridor
+                for pid in relevistas:
+                    p_key = f"ID{pid}"
+                    p_stats = box.get(team_side, {}).get('players', {}).get(p_key, {}).get('stats', {}).get('pitching', {})
+                    if not p_stats: continue
+                        
+                    total_hits += int(p_stats.get('hits', 0))
+                    total_bb += int(p_stats.get('baseOnBalls', 0))
+                    total_k += int(p_stats.get('strikeOuts', 0))
+                    total_er += int(p_stats.get('earnedRuns', 0))
+                    
+                    ip_str = str(p_stats.get('inningsPitched', '0.0'))
+                    if '.' in ip_str:
+                        full, frac = ip_str.split('.')
+                        total_outs += (int(full) * 3) + int(frac)
+                    else:
+                        total_outs += int(ip_str) * 3
+            except: pass
+                
+        if total_outs > 0:
+            ip_calc = total_outs / 3.0
+            res["IP"] = f"{int(total_outs//3)}.{total_outs%3}"
+            res["H"] = total_hits
+            res["BB"] = total_bb
+            res["K"] = total_k
+            res["ER"] = total_er
+            res["ERA"] = f"{(total_er * 9) / ip_calc:.2f}"
+            res["WHIP"] = f"{(total_hits + total_bb) / ip_calc:.2f}"
+    except Exception: pass
+    return res
         
 def convertir_df_a_excel(df, sheet_name="Hoja1"):
     output = io.BytesIO()
@@ -577,12 +677,13 @@ if st.session_state.df_mlb is not None:
         df_filtrado['Win'] = (df_filtrado['Carreras_Local'] > df_filtrado['Carreras_Visitante']).astype(int)
         clf = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42).fit(df_filtrado[['Elo_L', 'Elo_V']], df_filtrado['Win'])
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📅 Cartelera del Día",
     "🔥 Caza-Ponches",
     "🔹 Caza-Hits",
     "🧮 Calculadora +EV",
-    "📊 Auditoría Semanal"
+    "📊 Auditoría Semanal",
+    "🔬 Lupa de Pitcheo"
 ])
     
     with tab1:
@@ -985,3 +1086,70 @@ if st.session_state.df_mlb is not None:
                 col3.metric("Hits (1+)", f"{total_hits_acc}/{total_hits_eval}", f"{round(total_hits_acc/total_hits_eval*100,1)}%" if total_hits_eval else "0%")
             else:
                 st.warning("No se encontraron juegos finalizados en los últimos 7 días.")
+
+    with tab6:
+        st.markdown("### 🔬 Lupa de Pitcheo: Radiografía de 7 Juegos")
+        st.markdown("Selecciona un partido de la cartelera para desglosar el desempeño crudo del Abridor y el Bullpen en su muestra reciente.")
+        
+        juegos_dia_lupa = statsapi.schedule(date=st.session_state.fecha_hoy, sportId=1)
+        juegos_validos = [j for j in juegos_dia_lupa if j.get('status') not in ['Postponed', 'Cancelled']]
+        
+        if not juegos_validos:
+            st.info("No hay juegos programados para esta fecha.")
+        else:
+            opciones_juegos = {f"{j['away_name']} ✈️ @ 🏠 {j['home_name']}": j for j in juegos_validos}
+            juego_sel = st.selectbox("⚾ Selecciona el Partido:", list(opciones_juegos.keys()))
+            
+            if st.button("🔍 Extraer Radiografía", type="primary", use_container_width=True):
+                with st.spinner("Extrayendo estadísticas quirúrgicas de los Boxscores..."):
+                    j_data = opciones_juegos[juego_sel]
+                    
+                    p_home, p_away = get_starting_pitchers(j_data)
+                    home_id = j_data['home_id']
+                    away_id = j_data['away_id']
+                    home_name = j_data['home_name']
+                    away_name = j_data['away_name']
+                    
+                    # Away
+                    away_starter_stats = get_detailed_pitcher_stats(p_away, st.session_state.fecha_hoy)
+                    away_bullpen_stats = get_detailed_bullpen_stats(away_id, st.session_state.fecha_hoy)
+                    
+                    # Home
+                    home_starter_stats = get_detailed_pitcher_stats(p_home, st.session_state.fecha_hoy)
+                    home_bullpen_stats = get_detailed_bullpen_stats(home_id, st.session_state.fecha_hoy)
+                    
+                    datos_lupa = [
+                        {"Equipo": away_name, "Rol": f"Abridor: {p_away or 'TBD'}", **away_starter_stats},
+                        {"Equipo": away_name, "Rol": "Bullpen (Relevistas)", **away_bullpen_stats},
+                        {"Equipo": home_name, "Rol": f"Abridor: {p_home or 'TBD'}", **home_starter_stats},
+                        {"Equipo": home_name, "Rol": "Bullpen (Relevistas)", **home_bullpen_stats},
+                    ]
+                    
+                    df_lupa = pd.DataFrame(datos_lupa)
+                    
+                    # Formato de colores para rápida lectura
+                    def color_lupa_whip(val):
+                        try:
+                            v = float(val)
+                            if v < 1.15: return 'color: #00cc66; font-weight: bold;'
+                            elif v <= 1.30: return 'color: #ff9900; font-weight: bold;'
+                            else: return 'color: #ff4d4d; font-weight: bold;'
+                        except: return ''
+                        
+                    def color_lupa_era(val):
+                        try:
+                            v = float(val)
+                            if v < 3.20: return 'color: #00cc66; font-weight: bold;'
+                            elif v <= 4.20: return 'color: #ff9900; font-weight: bold;'
+                            else: return 'color: #ff4d4d; font-weight: bold;'
+                        except: return ''
+                    
+                    df_lupa_estilizado = df_lupa.style\
+                        .map(color_lupa_whip, subset=['WHIP'])\
+                        .map(color_lupa_era, subset=['ERA'])\
+                        .set_properties(**{'text-align': 'center'})\
+                        .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
+                    
+                    st.dataframe(df_lupa_estilizado, use_container_width=True, hide_index=True)
+                    
+                    st.caption("📝 **Nota Analítica:** La tabla muestra las últimas 7 salidas de los abridores y todo el trabajo de los relevistas en los últimos 7 días. ER = Carreras Limpias.")
