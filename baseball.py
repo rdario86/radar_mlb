@@ -600,55 +600,6 @@ def get_detailed_bullpen_stats(team_id, fecha_corte):
             res["WHIP"] = f"{(total_hits + total_bb) / ip_calc:.2f}"
     except Exception: pass
     return res
-
-@st.cache_resource(show_spinner="🧠 Entrenando IA (Esto tomará unos 15 segundos la primera vez)...")
-def entrenar_modelo_ia(fecha_corte, total_juegos, _df_filtrado):
-    # El guion bajo en _df_filtrado evita que Streamlit colapse escaneando el Excel en cada clic
-    df_train_base = _df_filtrado.copy()
-    df_train_base = df_train_base.sort_values('Date').reset_index(drop=True)
-    
-    x_racha_diff, x_h2h, x_luck_diff, x_split_diff, y_win = [], [], [], [], []
-    df_train = df_train_base.tail(600).copy()
-    
-    for idx, row in df_train.iterrows():
-        fecha_juego = row['Date']
-        e_local = row['Local']
-        e_visita = row['Visitante']
-        
-        df_pasado = df_train_base[df_train_base['Date'] < fecha_juego]
-        
-        if len(df_pasado) < 50:
-            x_racha_diff.append(0.0)
-            x_h2h.append(0.5)
-            x_luck_diff.append(0.0)
-            x_split_diff.append(0.0)
-        else:
-            r_l = get_recent_form(e_local, df_pasado)
-            r_v = get_recent_form(e_visita, df_pasado)
-            x_racha_diff.append(r_l - r_v)
-            
-            x_h2h.append(get_h2h_wins(e_local, e_visita, df_pasado))
-            
-            luck_l = get_pythagorean_luck(e_local, df_pasado)
-            luck_v = get_pythagorean_luck(e_visita, df_pasado)
-            x_luck_diff.append(luck_l - luck_v)
-            
-            s_l, s_v = get_splits_win_pct(e_local, e_visita, df_pasado)
-            x_split_diff.append(s_l - s_v)
-            
-        y_win.append(1 if row['Carreras_Local'] > row['Carreras_Visitante'] else 0)
-        
-    df_train['Racha_Diff'] = x_racha_diff
-    df_train['H2H_L_WinPct'] = x_h2h
-    df_train['Luck_Diff'] = x_luck_diff
-    df_train['Split_Diff'] = x_split_diff
-    df_train['Win'] = y_win
-    
-    features = ['Elo_L', 'Elo_V', 'Racha_Diff', 'H2H_L_WinPct', 'Luck_Diff', 'Split_Diff']
-    clf_modelo = RandomForestClassifier(n_estimators=150, max_depth=5, random_state=42)
-    clf_modelo.fit(df_train[features], df_train['Win'])
-    
-    return clf_modelo
         
 def convertir_df_a_excel(df, sheet_name="Hoja1"):
     output = io.BytesIO()
@@ -718,10 +669,52 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
         df_historico = st.session_state.df_mlb.copy()
         df_filtrado = df_historico[df_historico['Date'] < st.session_state.fecha_hoy].copy()
         
+        # ENTRENAMIENTO DIRECTO (Sin caché, limpio y seguro)
         if len(df_filtrado) > 0:
-            st.sidebar.info("🧠 Cargando IA... (Usando Caché para máxima velocidad ⚡)")
-            # Aquí le pasamos la fecha, el tamaño y el DataFrame (que ahora será ignorado por el escáner)
-            clf = entrenar_modelo_ia(st.session_state.fecha_hoy, len(df_filtrado), df_filtrado)
+            st.sidebar.info("🧠 Entrenando IA con variables avanzadas...")
+            df_train_base = df_filtrado.sort_values('Date').reset_index(drop=True)
+            
+            x_racha_diff, x_h2h, x_luck_diff, x_split_diff, y_win = [], [], [], [], []
+            df_train = df_train_base.tail(600).copy()
+            
+            for idx, row in df_train.iterrows():
+                fecha_juego = row['Date']
+                e_local = row['Local']
+                e_visita = row['Visitante']
+                
+                df_pasado = df_train_base[df_train_base['Date'] < fecha_juego]
+                
+                if len(df_pasado) < 50:
+                    x_racha_diff.append(0.0)
+                    x_h2h.append(0.5)
+                    x_luck_diff.append(0.0)
+                    x_split_diff.append(0.0)
+                else:
+                    r_l = get_recent_form(e_local, df_pasado)
+                    r_v = get_recent_form(e_visita, df_pasado)
+                    x_racha_diff.append(r_l - r_v)
+                    
+                    x_h2h.append(get_h2h_wins(e_local, e_visita, df_pasado))
+                    
+                    luck_l = get_pythagorean_luck(e_local, df_pasado)
+                    luck_v = get_pythagorean_luck(e_visita, df_pasado)
+                    x_luck_diff.append(luck_l - luck_v)
+                    
+                    s_l, s_v = get_splits_win_pct(e_local, e_visita, df_pasado)
+                    x_split_diff.append(s_l - s_v)
+                    
+                y_win.append(1 if row['Carreras_Local'] > row['Carreras_Visitante'] else 0)
+                
+            df_train['Racha_Diff'] = x_racha_diff
+            df_train['H2H_L_WinPct'] = x_h2h
+            df_train['Luck_Diff'] = x_luck_diff
+            df_train['Split_Diff'] = x_split_diff
+            df_train['Win'] = y_win
+            
+            features = ['Elo_L', 'Elo_V', 'Racha_Diff', 'H2H_L_WinPct', 'Luck_Diff', 'Split_Diff']
+            clf = RandomForestClassifier(n_estimators=150, max_depth=5, random_state=42)
+            clf.fit(df_train[features], df_train['Win'])
+            st.sidebar.success("✅ IA lista.")
             
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "📅 Cartelera del Día",
