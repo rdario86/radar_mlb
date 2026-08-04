@@ -721,14 +721,14 @@ if st.session_state.df_mlb is not None:
             st.sidebar.info("🧠 Cargando IA... (Usando Caché para máxima velocidad ⚡)")
             clf = entrenar_modelo_ia(df_filtrado)
     
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "📅 Cartelera del Día",
-    "🔥 Caza-Ponches",
-    "🔹 Caza-Hits",
-    "🧮 Calculadora +EV",
-    "📊 Auditoría Semanal",
-    "🔬 Lupa de Pitcheo"
-])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+            "📅 Cartelera del Día",
+            "🔥 Caza-Ponches",
+            "🔹 Caza-Hits",
+            "🧮 Calculadora +EV",
+            "📊 Auditoría Semanal",
+            "🔬 Lupa de Pitcheo"
+        ])
     
     with tab1:
         st.markdown(f"### 🎯 Partidos programados para el: **{st.session_state.fecha_hoy}**")
