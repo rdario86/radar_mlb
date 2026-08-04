@@ -1082,11 +1082,14 @@ if st.session_state.df_mlb is not None:
                     whip_bp_l = get_bullpen_metrics(home_id, fecha_str)
                     whip_bp_v = get_bullpen_metrics(away_id, fecha_str)
 
-                    prob = clf_aud.predict_proba(np.array([[elo_l, elo_v]]))[0][1]
+                    # 1. Usar el cerebro IA avanzado para la auditoría (6 variables)
+                    X_auditoria = np.array([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]])
+                    prob_ml = clf.predict_proba(X_auditoria)[0][1]
+                    
+                    # 2. Ajuste de pitcheo del día evaluado
                     pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
                     
-                    prob_final_local = (prob + (racha_l - racha_v)*PESO_RACHA + (h2h - 0.5)*PESO_H2H +
-                                        (luck_l - luck_v)*PESO_PITAGORICO + (split_l - split_v)*PESO_SPLITS + pitcher_adj)
+                    prob_final_local = prob_ml + pitcher_adj
                     ganador = e_local if prob_final_local > 0.5 else e_visita
 
                     r_local = juego.get('home_score', 0)
