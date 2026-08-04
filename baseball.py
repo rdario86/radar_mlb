@@ -1127,21 +1127,20 @@ if st.session_state.df_mlb is not None:
                     
                     df_lupa = pd.DataFrame(datos_lupa)
                     
-                    # Formato de colores para rápida lectura
-                    def color_lupa_whip(val):
-                        try:
-                            v = float(val)
-                            if v < 1.15: return 'color: #00cc66; font-weight: bold;'
-                            elif v <= 1.30: return 'color: #ff9900; font-weight: bold;'
-                            else: return 'color: #ff4d4d; font-weight: bold;'
-                        except: return ''
-                        
                     def color_lupa_whip(val):
                         try:
                             v = float(val)
                             if v < 1.00: return 'color: #00cc66; font-weight: bold;' # Verde (< 1.00)
                             elif v <= 1.30: return 'color: #e6b800; font-weight: bold;' # Amarillo (1.00 a 1.30)
                             else: return 'color: #ff4d4d; font-weight: bold;' # Rojo (> 1.30)
+                        except: return ''
+                        
+                    def color_lupa_era(val):
+                        try:
+                            v = float(val)
+                            if v < 3.20: return 'color: #00cc66; font-weight: bold;'
+                            elif v <= 4.20: return 'color: #ff9900; font-weight: bold;'
+                            else: return 'color: #ff4d4d; font-weight: bold;'
                         except: return ''
                     
                     df_lupa_estilizado = df_lupa.style\
