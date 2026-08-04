@@ -601,19 +601,22 @@ def get_detailed_bullpen_stats(team_id, fecha_corte):
     except Exception: pass
     return res
 
-@st.cache_resource(show_spinner=False)
-def entrenar_modelo_ia(df_hist):
-    df_hist = df_hist.sort_values('Date').reset_index(drop=True)
+@st.cache_resource(show_spinner="🧠 Entrenando IA (Esto tomará unos segundos)...")
+def entrenar_modelo_ia(fecha_corte, total_juegos):
+    # En lugar de recibir la base de datos desde afuera y bloquearse, la extrae internamente al instante
+    df_hist = st.session_state.df_mlb.copy()
+    df_train_base = df_hist[df_hist['Date'] < fecha_corte].copy()
+    df_train_base = df_train_base.sort_values('Date').reset_index(drop=True)
     
     x_racha_diff, x_h2h, x_luck_diff, x_split_diff, y_win = [], [], [], [], []
-    df_train = df_hist.tail(600).copy()
+    df_train = df_train_base.tail(600).copy()
     
     for idx, row in df_train.iterrows():
         fecha_juego = row['Date']
         e_local = row['Local']
         e_visita = row['Visitante']
         
-        df_pasado = df_hist[df_hist['Date'] < fecha_juego]
+        df_pasado = df_train_base[df_train_base['Date'] < fecha_juego]
         
         if len(df_pasado) < 50:
             x_racha_diff.append(0.0)
@@ -716,10 +719,11 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
         df_historico = st.session_state.df_mlb.copy()
         df_filtrado = df_historico[df_historico['Date'] < st.session_state.fecha_hoy].copy()
         
-        # ✅ ASÍ DEBE QUEDAR AHORA: Limpio y llamando al caché
         if len(df_filtrado) > 0:
             st.sidebar.info("🧠 Cargando IA... (Usando Caché para máxima velocidad ⚡)")
-            clf = entrenar_modelo_ia(df_filtrado)
+            # Le pasamos solo textos y números (fecha y cantidad de juegos).
+            # Esto evita que Streamlit se bloquee analizando Excel enteros en cada clic.
+            clf = entrenar_modelo_ia(st.session_state.fecha_hoy, len(st.session_state.df_mlb))
     
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "📅 Cartelera del Día",
