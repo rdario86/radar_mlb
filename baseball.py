@@ -669,53 +669,56 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
         df_historico = st.session_state.df_mlb.copy()
         df_filtrado = df_historico[df_historico['Date'] < st.session_state.fecha_hoy].copy()
         
-        # ENTRENAMIENTO DIRECTO (Sin caché, limpio y seguro)
-        if len(df_filtrado) > 0:
-            st.sidebar.info("🧠 Entrenando IA con variables avanzadas...")
-            df_train_base = df_filtrado.sort_values('Date').reset_index(drop=True)
-            
-            x_racha_diff, x_h2h, x_luck_diff, x_split_diff, y_win = [], [], [], [], []
-            df_train = df_train_base.tail(600).copy()
-            
-            for idx, row in df_train.iterrows():
-                fecha_juego = row['Date']
-                e_local = row['Local']
-                e_visita = row['Visitante']
+        # GUARDAMOS EL MODELO EN SESSION_STATE PARA QUE NO SE PIERDA NUNCA
+        if 'clf_model' not in st.session_state or st.session_state.df_mlb is not None:
+            if len(df_filtrado) > 0:
+                st.sidebar.info("🧠 Entrenando IA con variables avanzadas...")
+                df_train_base = df_filtrado.sort_values('Date').reset_index(drop=True)
                 
-                df_pasado = df_train_base[df_train_base['Date'] < fecha_juego]
+                x_racha_diff, x_h2h, x_luck_diff, x_split_diff, y_win = [], [], [], [], []
+                df_train = df_train_base.tail(600).copy()
                 
-                if len(df_pasado) < 50:
-                    x_racha_diff.append(0.0)
-                    x_h2h.append(0.5)
-                    x_luck_diff.append(0.0)
-                    x_split_diff.append(0.0)
-                else:
-                    r_l = get_recent_form(e_local, df_pasado)
-                    r_v = get_recent_form(e_visita, df_pasado)
-                    x_racha_diff.append(r_l - r_v)
+                for idx, row in df_train.iterrows():
+                    fecha_juego = row['Date']
+                    e_local = row['Local']
+                    e_visita = row['Visitante']
                     
-                    x_h2h.append(get_h2h_wins(e_local, e_visita, df_pasado))
+                    df_pasado = df_train_base[df_train_base['Date'] < fecha_juego]
                     
-                    luck_l = get_pythagorean_luck(e_local, df_pasado)
-                    luck_v = get_pythagorean_luck(e_visita, df_pasado)
-                    x_luck_diff.append(luck_l - luck_v)
+                    if len(df_pasado) < 50:
+                        x_racha_diff.append(0.0)
+                        x_h2h.append(0.5)
+                        x_luck_diff.append(0.0)
+                        x_split_diff.append(0.0)
+                    else:
+                        r_l = get_recent_form(e_local, df_pasado)
+                        r_v = get_recent_form(e_visita, df_pasado)
+                        x_racha_diff.append(r_l - r_v)
+                        
+                        x_h2h.append(get_h2h_wins(e_local, e_visita, df_pasado))
+                        
+                        luck_l = get_pythagorean_luck(e_local, df_pasado)
+                        luck_v = get_pythagorean_luck(e_visita, df_pasado)
+                        x_luck_diff.append(luck_l - luck_v)
+                        
+                        s_l, s_v = get_splits_win_pct(e_local, e_visita, df_pasado)
+                        x_split_diff.append(s_l - s_v)
+                        
+                    y_win.append(1 if row['Carreras_Local'] > row['Carreras_Visitante'] else 0)
                     
-                    s_l, s_v = get_splits_win_pct(e_local, e_visita, df_pasado)
-                    x_split_diff.append(s_l - s_v)
-                    
-                y_win.append(1 if row['Carreras_Local'] > row['Carreras_Visitante'] else 0)
+                df_train['Racha_Diff'] = x_racha_diff
+                df_train['H2H_L_WinPct'] = x_h2h
+                df_train['Luck_Diff'] = x_luck_diff
+                df_train['Split_Diff'] = x_split_diff
+                df_train['Win'] = y_win
                 
-            df_train['Racha_Diff'] = x_racha_diff
-            df_train['H2H_L_WinPct'] = x_h2h
-            df_train['Luck_Diff'] = x_luck_diff
-            df_train['Split_Diff'] = x_split_diff
-            df_train['Win'] = y_win
-            
-            features = ['Elo_L', 'Elo_V', 'Racha_Diff', 'H2H_L_WinPct', 'Luck_Diff', 'Split_Diff']
-            clf = RandomForestClassifier(n_estimators=150, max_depth=5, random_state=42)
-            clf.fit(df_train[features], df_train['Win'])
-            st.sidebar.success("✅ IA lista.")
-            
+                features = ['Elo_L', 'Elo_V', 'Racha_Diff', 'H2H_L_WinPct', 'Luck_Diff', 'Split_Diff']
+                
+                # Guardamos el clasificador directamente en session_state
+                st.session_state.clf_model = RandomForestClassifier(n_estimators=150, max_depth=5, random_state=42)
+                st.session_state.clf_model.fit(df_train[features], df_train['Win'])
+                st.sidebar.success("✅ IA lista.")
+
         tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "📅 Cartelera del Día",
             "🔥 Caza-Ponches",
@@ -813,9 +816,9 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
                             whip_bp_l = get_bullpen_metrics(home_id, st.session_state.fecha_hoy)
                             whip_bp_v = get_bullpen_metrics(away_id, st.session_state.fecha_hoy)
 
-                            # 1. PREDICCIÓN PURA DE LA IA (Machine Learning)
-                            X_hoy = np.array([[elo_l, elo_v, racha_diff, h2h_l, luck_diff, split_diff]])
-                            prob_ml = clf.predict_proba(X_hoy)[0][1]
+                            # 1. PREDICCION MULTIVARIABLE SEGURA
+                            X_hoy = np.array([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]])
+                            prob_ml = st.session_state.clf_model.predict_proba(X_hoy)[0][1]
 
                             # 2. AJUSTE DE PITCHEO MANUAL (Hybrid Model)
                             pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
@@ -1078,7 +1081,7 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
 
                     # 1. Usar el cerebro IA avanzado para la auditoría (6 variables)
                     X_auditoria = np.array([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]])
-                    prob_ml = clf.predict_proba(X_auditoria)[0][1]
+                    prob_ml = st.session_state.clf_model.predict_proba(X_auditoria)[0][1]
                     
                     # 2. Ajuste de pitcheo del día evaluado
                     pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
