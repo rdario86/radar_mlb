@@ -462,30 +462,56 @@ def get_strikeout_hunters(fecha_hoy):
                     'hydrate': f'teamStats(group=[hitting],type=[season,gameLog],season={anio_str})'
                 })
                 
-                opp_ks = 0; opp_pa = 1
+                season_ks = 0; season_pa = 1
+                l10_ks = 0; l10_pa = 0
+                
                 try:
                     t_stats_blocks = team_raw['teams'][0].get('teamStats', [])
                     ks_equipo_hoy = 0; pa_equipo_hoy = 0
+                    
                     for b in t_stats_blocks:
                         if b.get('type', {}).get('displayName') == 'season':
                             t_stats = b['splits'][0]['stat']
-                            opp_ks = int(t_stats.get('strikeOuts', 0))
-                            opp_pa = int(t_stats.get('plateAppearances', 1))
+                            season_ks = int(t_stats.get('strikeOuts', 0))
+                            season_pa = int(t_stats.get('plateAppearances', 1))
+                            
                         elif b.get('type', {}).get('displayName') == 'gameLog':
-                            for t_game in b.get('splits', []):
+                            splits = b.get('splits', [])
+                            valid_splits = [s for s in splits if s.get('date', '') < fecha_hoy]
+                            valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
+                            
+                            # Extraemos cómo se ha ponchado este equipo en sus ÚLTIMOS 10 JUEGOS
+                            for t_game in valid_splits[:10]:
+                                l10_ks += int(t_game.get('stat', {}).get('strikeOuts', 0))
+                                l10_pa += int(t_game.get('stat', {}).get('plateAppearances', 0))
+                                
+                            # Restamos lo de hoy por si el juego ya empezó
+                            for t_game in splits:
                                 if t_game.get('date') == fecha_hoy:
                                     ks_equipo_hoy += int(t_game.get('stat', {}).get('strikeOuts', 0))
                                     pa_equipo_hoy += int(t_game.get('stat', {}).get('plateAppearances', 0))
-                    opp_ks = max(0, opp_ks - ks_equipo_hoy)
-                    opp_pa = max(1, opp_pa - pa_equipo_hoy)
+                                    
+                    season_ks = max(0, season_ks - ks_equipo_hoy)
+                    season_pa = max(1, season_pa - pa_equipo_hoy)
                 except: pass
                 
-                opp_k_pct = opp_ks / opp_pa if opp_pa > 1 else 0.225
-                factor_rival = (opp_k_pct / 0.225) ** 0.5
+                # 1. Calculamos porcentajes reales
+                season_k_pct = season_ks / season_pa if season_pa > 1 else 0.225
+                l10_k_pct = l10_ks / l10_pa if l10_pa > 1 else season_k_pct
+                
+                # 2. ÍNDICE DE VULNERABILIDAD RIVAL (40% Temp / 60% Racha Reciente)
+                blended_k_pct = (season_k_pct * 0.40) + (l10_k_pct * 0.60)
+                
+                # 0.225 (22.5%) es el promedio histórico de ponches de la MLB
+                factor_rival = blended_k_pct / 0.225
+                
+                # 3. Limitamos el impacto entre 0.80x y 1.20x para proteger el algoritmo
+                factor_rival = max(0.80, min(1.20, factor_rival))
 
                 avg_ip = (l7_outs / 3.0) / juegos_lanzados
                 factor_ip = min(1.0, avg_ip / 6.0)
 
+                # 4. Proyección final combinando el talento del pitcher y la vulnerabilidad rival
                 proj_k = (median_k * factor_rival * factor_ip) * 0.90
                 proj_k_rounded = round(proj_k, 3)
                 meta_ks = int(proj_k)
