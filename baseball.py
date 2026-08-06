@@ -609,6 +609,8 @@ def convertir_df_a_excel(df, sheet_name="Hoja1"):
     return datos_procesados
 
 if 'df_mlb' not in st.session_state: st.session_state.df_mlb = None
+if 'modelo_ia' not in st.session_state: st.session_state.modelo_ia = None
+if 'fecha_modelo' not in st.session_state: st.session_state.fecha_modelo = None
 
 st.sidebar.markdown("### 🗓️ Motor de Tiempo")
 st.sidebar.markdown("Las fechas cambian estrictamente a las 12:00 AM Hora del Este (ET). Selecciona días pasados para auditar el rendimiento del radar.")
@@ -662,6 +664,7 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
             
             df_full['Elo_L'], df_full['Elo_V'] = h_elo_l, h_elo_v
             st.session_state.df_mlb = df_full
+            st.session_state.modelo_ia = None
             st.sidebar.success("✅ Base de datos al día.")
         except Exception as e: st.sidebar.error(f"Error Crítico: {e}")
 
@@ -669,15 +672,19 @@ if st.session_state.df_mlb is not None:
     df_historico = st.session_state.df_mlb.copy()
     df_filtrado = df_historico[df_historico['Date'] < st.session_state.fecha_hoy].copy()
     
-    if len(df_filtrado) > 0:
-        st.sidebar.info("🧠 Entrenando IA con variables avanzadas. Esto tomará unos segundos...")
+    # 🟢 INICIO DE LA OPTIMIZACIÓN SEGURA DE VELOCIDAD 🟢
+    necesita_entrenar = True
+    
+    # Si la IA ya fue entrenada hoy, la sacamos de la memoria al instante
+    if st.session_state.modelo_ia is not None and st.session_state.fecha_modelo == st.session_state.fecha_hoy:
+        necesita_entrenar = False
+        clf = st.session_state.modelo_ia
+        
+    if len(df_filtrado) > 0 and necesita_entrenar:
+        st.sidebar.info("🧠 Entrenando IA. Tomará unos segundos la primera vez...")
         df_filtrado = df_filtrado.sort_values('Date').reset_index(drop=True)
         
-        # Crear listas para almacenar las variables de entrenamiento
         x_racha_diff, x_h2h, x_luck_diff, x_split_diff, y_win = [], [], [], [], []
-        
-        # Solo entrenamos con los últimos 600 juegos para no ralentizar Streamlit
-        # y usar la tendencia más reciente de la liga.
         df_train = df_filtrado.tail(600).copy()
         
         for idx, row in df_train.iterrows():
@@ -685,10 +692,8 @@ if st.session_state.df_mlb is not None:
             e_local = row['Local']
             e_visita = row['Visitante']
             
-            # Cortamos el historial: solo vemos lo que pasó ANTES de este juego
             df_pasado = df_filtrado[df_filtrado['Date'] < fecha_juego]
             
-            # Si no hay historial suficiente (principio de temporada), usamos valores neutros
             if len(df_pasado) < 50:
                 x_racha_diff.append(0.0)
                 x_h2h.append(0.5)
@@ -710,17 +715,21 @@ if st.session_state.df_mlb is not None:
                 
             y_win.append(1 if row['Carreras_Local'] > row['Carreras_Visitante'] else 0)
             
-        # Agregamos las nuevas columnas al dataframe de entrenamiento
         df_train['Racha_Diff'] = x_racha_diff
         df_train['H2H_L_WinPct'] = x_h2h
         df_train['Luck_Diff'] = x_luck_diff
         df_train['Split_Diff'] = x_split_diff
         df_train['Win'] = y_win
         
-        # ENTRENAMIENTO MULTIVARIABLE (La IA ahora ve todo)
         features = ['Elo_L', 'Elo_V', 'Racha_Diff', 'H2H_L_WinPct', 'Luck_Diff', 'Split_Diff']
         clf = RandomForestClassifier(n_estimators=150, max_depth=MAX_DEPTH_ELO, random_state=42)
         clf.fit(df_train[features], df_train['Win'])
+        
+        # Guardamos la IA en la caja fuerte para no repetir este ciclo en el próximo clic
+        st.session_state.modelo_ia = clf
+        st.session_state.fecha_modelo = st.session_state.fecha_hoy
+        st.sidebar.success("✅ IA lista y guardada.")
+    # 🟢 FIN DE LA OPTIMIZACIÓN 🟢
     
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📅 Cartelera del Día",
