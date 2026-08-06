@@ -262,8 +262,19 @@ def get_hit_hunters(anio, fecha_hoy):
         equipos_hoy = {}
         for juego in juegos_hoy:
             if juego.get('status', '') not in ['Postponed', 'Cancelled']:
-                equipos_hoy[juego.get('home_id')] = {'condicion': 'Local', 'status': juego.get('status')}
-                equipos_hoy[juego.get('away_id')] = {'condicion': 'Visitante', 'status': juego.get('status')}
+                p_local, p_visita = get_starting_pitchers(juego)
+                h_id = juego.get('home_id')
+                a_id = juego.get('away_id')
+                
+                # Guardamos quién es el rival y qué lanzador le toca enfrentar
+                equipos_hoy[h_id] = {
+                    'condicion': 'Local', 'status': juego.get('status'),
+                    'opp_id': a_id, 'opp_pitcher': p_visita
+                }
+                equipos_hoy[a_id] = {
+                    'condicion': 'Visitante', 'status': juego.get('status'),
+                    'opp_id': h_id, 'opp_pitcher': p_local
+                }
 
         data = statsapi.get('stats_leaders', {'leaderCategories': 'battingAverage', 'season': anio, 'limit': 80, 'statGroup': 'hitting'})
         if not data or 'leagueLeaders' not in data or len(data['leagueLeaders']) == 0:
@@ -275,8 +286,10 @@ def get_hit_hunters(anio, fecha_hoy):
             team_id = p.get('team', {}).get('id')
             if team_id in equipos_hoy:
                 p['condicion_hoy'] = equipos_hoy[team_id]['condicion']
-                p['team_name'] = p.get('team', {}).get('name', 'Unknown')
                 p['game_status'] = equipos_hoy[team_id]['status']
+                p['opp_id'] = equipos_hoy[team_id]['opp_id']
+                p['opp_pitcher'] = equipos_hoy[team_id]['opp_pitcher']
+                p['team_name'] = p.get('team', {}).get('name', 'Unknown')
                 jugadores_activos.append(p)
 
         resultados = []
@@ -289,6 +302,9 @@ def get_hit_hunters(anio, fecha_hoy):
             team_name = p.get('team_name', 'Unknown')
             condicion = p.get('condicion_hoy', 'Visitante')
             game_status = p.get('game_status', '')
+            
+            opp_id = p.get('opp_id')
+            opp_pitcher = p.get('opp_pitcher')
 
             raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'currentTeam,stats(group=[hitting],type=[season,gameLog])'})
             person = raw_data.get('people', [{}])[0]
@@ -328,9 +344,22 @@ def get_hit_hunters(anio, fecha_hoy):
             season_ab = max(1, season_ab - ab_hoy_real)
             l10_ab = max(1, l10_ab)
 
-            avg_index = (season_hits / season_ab * 0.3) + (l10_hits / l10_ab * 0.7)
+            # 1. Calculamos el promedio base del bateador
+            avg_index_base = (season_hits / season_ab * 0.3) + (l10_hits / l10_ab * 0.7)
 
-            prob_1hit = 1 - (1 - avg_index) ** 4
+            # 2. EVALUACIÓN DEL PITCHEO RIVAL (El toque maestro)
+            whip_abridor = get_pitcher_whip(opp_pitcher, fecha_hoy)
+            whip_bullpen = get_bullpen_metrics(opp_id, fecha_hoy)
+            
+            whip_combinado = (whip_abridor * 0.6) + (whip_bullpen * 0.4)
+            factor_pitcheo = whip_combinado / 1.30  # 1.30 es la media de la liga
+            
+            # 3. Aplicamos el factor (limitando el impacto a un máximo de +/- 20% para no distorsionar)
+            factor_pitcheo = max(0.80, min(1.20, factor_pitcheo))
+            avg_index_ajustado = avg_index_base * factor_pitcheo
+
+            # 4. Cálculo Binomial con el promedio ya ajustado al rival
+            prob_1hit = 1 - (1 - avg_index_ajustado) ** 4
             prob_1hit_pct = int(round(prob_1hit * 100))
 
             eval_str = "⏳ Pendiente"
@@ -343,6 +372,7 @@ def get_hit_hunters(anio, fecha_hoy):
             resultados.append({
                 "⚾ Bateador": p_name,
                 "👕 Equipo": team_name,
+                "⚔️ Rival": f"{opp_pitcher or 'TBD'} ({whip_abridor:.2f})",
                 "🏟️ Condición": condicion,
                 "📊 AVG Temp.": f"{season_hits / season_ab:.3f}" if season_ab > 0 else ".000",
                 "🔥 AVG L10": f"{l10_hits / l10_ab:.3f}" if l10_ab > 0 else ".000",
