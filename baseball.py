@@ -883,7 +883,7 @@ if st.session_state.df_mlb is not None:
                             whip = float(val_str.split('(')[-1].replace(')', '')) if '(' in val_str else float(val_str)
                             
                             if whip < 1.00: styles[j] = 'color: #00cc66; font-weight: bold;'
-                            elif whip <= 1.30: styles[j] = 'color: #ff9900; font-weight: bold;'
+                            elif whip <= 1.30: styles[j] = 'color: #e6b800; font-weight: bold;'
                             else: styles[j] = 'color: #ff4d4d; font-weight: bold;'
                         except: pass
                 return styles
