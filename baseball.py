@@ -260,20 +260,32 @@ def get_hit_hunters(anio, fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
         equipos_hoy = {}
+        
+        # Función rápida interna para saber si el pitcher es Zurdo (L) o Derecho (R)
+        def get_pitcher_hand(p_name):
+            if not p_name or p_name == 'TBD': return 'R' # Por defecto asumimos derecho
+            try:
+                pl = statsapi.lookup_player(p_name)
+                return pl[0].get('pitchHand', {}).get('code', 'R') if pl else 'R'
+            except: return 'R'
+
         for juego in juegos_hoy:
             if juego.get('status', '') not in ['Postponed', 'Cancelled']:
                 p_local, p_visita = get_starting_pitchers(juego)
                 h_id = juego.get('home_id')
                 a_id = juego.get('away_id')
                 
-                # Guardamos quién es el rival y qué lanzador le toca enfrentar
+                # Extraemos la mano de los abridores de hoy
+                hand_local = get_pitcher_hand(p_local)
+                hand_visita = get_pitcher_hand(p_visita)
+                
                 equipos_hoy[h_id] = {
                     'condicion': 'Local', 'status': juego.get('status'),
-                    'opp_id': a_id, 'opp_pitcher': p_visita
+                    'opp_id': a_id, 'opp_pitcher': p_visita, 'opp_hand': hand_visita
                 }
                 equipos_hoy[a_id] = {
                     'condicion': 'Visitante', 'status': juego.get('status'),
-                    'opp_id': h_id, 'opp_pitcher': p_local
+                    'opp_id': h_id, 'opp_pitcher': p_local, 'opp_hand': hand_local
                 }
 
         data = statsapi.get('stats_leaders', {'leaderCategories': 'battingAverage', 'season': anio, 'limit': 80, 'statGroup': 'hitting'})
@@ -289,6 +301,7 @@ def get_hit_hunters(anio, fecha_hoy):
                 p['game_status'] = equipos_hoy[team_id]['status']
                 p['opp_id'] = equipos_hoy[team_id]['opp_id']
                 p['opp_pitcher'] = equipos_hoy[team_id]['opp_pitcher']
+                p['opp_hand'] = equipos_hoy[team_id]['opp_hand']
                 p['team_name'] = p.get('team', {}).get('name', 'Unknown')
                 jugadores_activos.append(p)
 
@@ -305,6 +318,7 @@ def get_hit_hunters(anio, fecha_hoy):
             
             opp_id = p.get('opp_id')
             opp_pitcher = p.get('opp_pitcher')
+            opp_hand = p.get('opp_hand')
 
             raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'currentTeam,stats(group=[hitting],type=[season,gameLog])'})
             person = raw_data.get('people', [{}])[0]
@@ -312,6 +326,9 @@ def get_hit_hunters(anio, fecha_hoy):
             current_team_obj = person.get('currentTeam', {})
             if current_team_obj:
                 team_name = current_team_obj.get('name', team_name)
+                
+            # Extraemos la mano del Bateador: 'L' (Zurdo), 'R' (Derecho), 'S' (Switch/Ambidiestro)
+            bat_hand = person.get('batSide', {}).get('code', 'R')
                 
             stats_blocks = person.get('stats', [])
 
@@ -344,22 +361,30 @@ def get_hit_hunters(anio, fecha_hoy):
             season_ab = max(1, season_ab - ab_hoy_real)
             l10_ab = max(1, l10_ab)
 
-            # 1. Calculamos el promedio base del bateador
-            avg_index_base = (season_hits / season_ab * 0.3) + (l10_hits / l10_ab * 0.7)
+            # 1. Promedio base
+            avg_index_base = (season_hits / season_ab * 0.6) + (l10_hits / l10_ab * 0.4)
 
-            # 2. EVALUACIÓN DEL PITCHEO RIVAL (El toque maestro)
+            # 2. SPLITS: Ventaja de Pelotón (Platoon Advantage)
+            platoon_mod = 1.0 # Neutro
+            if bat_hand == 'S': 
+                platoon_mod = 1.05 # Ambidiestro siempre tiene ventaja
+            elif bat_hand != opp_hand:
+                platoon_mod = 1.05 # Manos contrarias (Ej: Bateador Zurdo vs Pitcher Derecho)
+            else:
+                platoon_mod = 0.95 # Misma mano (Ej: Bateador Derecho vs Pitcher Derecho)
+
+            # 3. Evaluación del Pitcheo Rival
             whip_abridor = get_pitcher_whip(opp_pitcher, fecha_hoy)
             whip_bullpen = get_bullpen_metrics(opp_id, fecha_hoy)
-            
             whip_combinado = (whip_abridor * 0.6) + (whip_bullpen * 0.4)
-            factor_pitcheo = whip_combinado / 1.30  # 1.30 es la media de la liga
+            factor_pitcheo = whip_combinado / 1.30
+            factor_pitcheo = max(0.90, min(1.10, factor_pitcheo))
             
-            # 3. Aplicamos el factor (limitando el impacto a un máximo de +/- 20% para no distorsionar)
-            factor_pitcheo = max(0.80, min(1.20, factor_pitcheo))
-            avg_index_ajustado = avg_index_base * factor_pitcheo
+            # 4. Ajuste Final: Promedio × Factor Pitcheo × Ventaja de Pelotón
+            avg_index_ajustado = avg_index_base * factor_pitcheo * platoon_mod
 
-            # 4. Cálculo Binomial con el promedio ya ajustado al rival
-            prob_1hit = 1 - (1 - avg_index_ajustado) ** 4
+            # 5. Cálculo Binomial Realista
+            prob_1hit = 1 - (1 - avg_index_ajustado) ** 3.8
             prob_1hit_pct = int(round(prob_1hit * 100))
 
             eval_str = "⏳ Pendiente"
@@ -372,7 +397,7 @@ def get_hit_hunters(anio, fecha_hoy):
             resultados.append({
                 "⚾ Bateador": p_name,
                 "👕 Equipo": team_name,
-                "⚔️ Rival": f"{opp_pitcher or 'TBD'} ({whip_abridor:.2f})",
+                "⚔️ Rival": f"{opp_pitcher or 'TBD'} ({opp_hand})",
                 "🏟️ Condición": condicion,
                 "📊 AVG Temp.": f"{season_hits / season_ab:.3f}" if season_ab > 0 else ".000",
                 "🔥 AVG L10": f"{l10_hits / l10_ab:.3f}" if l10_ab > 0 else ".000",
@@ -388,6 +413,7 @@ def get_hit_hunters(anio, fecha_hoy):
         return top4
     except Exception:
         return []
+
 
 def get_strikeout_hunters(fecha_hoy):
     try:
