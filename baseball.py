@@ -453,7 +453,7 @@ def get_strikeout_hunters(fecha_hoy):
                         raw_data = temp_data
                         break
                         
-                # Si no lo encontró (ej. fue cambiado de equipo hoy mismo), usa el primero por defecto
+                # Si no lo encontró, usa el primero por defecto
                 if not p_id or not raw_data:
                     p_id = players[0]['id']
                     raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'currentTeam,stats(group=[pitching],type=[gameLog])'})
@@ -554,6 +554,13 @@ def get_strikeout_hunters(fecha_hoy):
                 avg_outs_redondeado = int(round(l7_outs / juegos_lanzados))
                 innings_enteros = avg_outs_redondeado // 3
                 outs_sobrantes = avg_outs_redondeado % 3
+                
+                # -------------------------------------------------------------
+                # NUEVO FILTRO: Mínimo 3 innings de proyección obligatorios
+                # -------------------------------------------------------------
+                if innings_enteros < 3:
+                    continue
+                
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
 
                 proj_k = (median_k * factor_rival * factor_ip)
@@ -601,7 +608,7 @@ def get_strikeout_hunters(fecha_hoy):
         return nuevo_top4
     except Exception:
         return []
-
+
 def get_detailed_pitcher_stats(pitcher_name, fecha_corte):
     res = {"IP": "0.0", "H": 0, "BB": 0, "K": 0, "ER": 0, "ERA": "4.50", "WHIP": "1.30"}
     if not pitcher_name or pitcher_name == 'TBD': return res
