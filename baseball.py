@@ -437,7 +437,7 @@ def get_strikeout_hunters(fecha_hoy):
                 if not players: continue
                 
                 # -------------------------------------------------------------
-                # 2. FILTRO ANTI-HOMÓNIMOS (Soluciona el caso Eduardo Rodriguez)
+                # 2. FILTRO ANTI-HOMÓNIMOS
                 p_id = None
                 raw_data = None
                 
@@ -1019,8 +1019,8 @@ if st.session_state.df_mlb is not None:
             st.info("Presiona el botón 'Analizar y Evaluar Cartelera' para generar las predicciones del día.")
 
     with tab2:
-        st.markdown("### 🔥 Radar de Ponches: Pitcher K/9 vs Vulnerabilidad del Rival")
-        if st.button("🎯 Cazar Ponches del Día (Top 4)", type="primary", use_container_width=True):
+        st.markdown("### ❄️ Radar de Bajas: Pitcher K/9 vs Vulnerabilidad del Rival")
+        if st.button("🎯 Cazar Bajas del Día (Top 4)", type="primary", use_container_width=True):
             with st.spinner("Haciendo el cruce de vulnerabilidad y auditando ponches finales..."):
                 resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
                 if resultados_k:
