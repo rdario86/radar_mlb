@@ -538,7 +538,7 @@ def get_strikeout_hunters(fecha_hoy):
                 factor_ip = min(1.0, avg_ip / 6.0)
 
                 # 4. Proyección final combinando el talento del pitcher y la vulnerabilidad rival
-                proj_k = (median_k * factor_rival * factor_ip) * 0.90
+                proj_k = (median_k * factor_rival * factor_ip)
                 proj_k_rounded = round(proj_k, 3)
                 meta_ks = int(proj_k)
 
