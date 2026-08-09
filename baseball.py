@@ -425,56 +425,79 @@ def get_strikeout_hunters(fecha_hoy):
             g_status = juego.get('status', '')
             p_local, p_visita = get_starting_pitchers(juego)
             
+            # 1. AGREGAMOS EL ID DEL EQUIPO AL MATCHUP PARA EL FILTRO ANTI-CLONES
             matchups = [
-                (p_local, juego.get('home_name'), juego.get('away_id'), juego.get('away_name')),
-                (p_visita, juego.get('away_name'), juego.get('home_id'), juego.get('home_name'))
+                (p_local, juego.get('home_id'), juego.get('home_name'), juego.get('away_id'), juego.get('away_name')),
+                (p_visita, juego.get('away_id'), juego.get('away_name'), juego.get('home_id'), juego.get('home_name'))
             ]
             
-            for p_name, p_team, opp_id, opp_name in matchups:
+            for p_name, team_id, p_team, opp_id, opp_name in matchups:
                 if not p_name or p_name == 'TBD': continue
                 players = statsapi.lookup_player(p_name)
                 if not players: continue
-                p_id = players[0]['id']
                 
-                raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
+                # -------------------------------------------------------------
+                # 2. FILTRO ANTI-HOMÓNIMOS (Soluciona el caso Eduardo Rodriguez)
+                p_id = None
+                raw_data = None
+                
+                for pl in players:
+                    temp_id = pl['id']
+                    # Extraemos el equipo actual del jugador
+                    temp_data = statsapi.get('people', {'personIds': temp_id, 'hydrate': 'currentTeam,stats(group=[pitching],type=[gameLog])'})
+                    person_info = temp_data.get('people', [{}])[0]
+                    
+                    # Verificamos si pertenece al equipo que juega hoy
+                    if person_info.get('currentTeam', {}).get('id') == team_id:
+                        p_id = temp_id
+                        raw_data = temp_data
+                        break
+                        
+                # Si no lo encontró (ej. fue cambiado de equipo hoy mismo), usa el primero por defecto
+                if not p_id or not raw_data:
+                    p_id = players[0]['id']
+                    raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'currentTeam,stats(group=[pitching],type=[gameLog])'})
+                # -------------------------------------------------------------
+                
                 stats_blocks = raw_data.get('people', [{}])[0].get('stats', [])
                 
-                l7_ks = 0; l7_outs = 0; juegos_lanzados = 0; ks_hoy_real = 0
-                ks_list = []
-                
+                all_splits = []
                 for block in stats_blocks:
                     if block.get('type', {}).get('displayName') == 'gameLog':
-                        splits = block.get('splits', [])
+                        all_splits.extend(block.get('splits', []))
+                
+                valid_splits = [s for s in all_splits if s.get('date', '') < fecha_hoy]
+                valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
+                
+                last_7 = valid_splits[:7]
+                juegos_lanzados = len(last_7)
+                
+                l7_ks = 0; l7_outs = 0; ks_hoy_real = 0; outs_hoy_real = 0
+                ks_list = []
+                
+                for game in last_7:
+                    g_stats = game.get('stat', {})
+                    k = int(g_stats.get('strikeOuts', 0))
+                    l7_ks += k
+                    ks_list.append(k) # Imprescindible para calcular la mediana
+                    ip_str = str(g_stats.get('inningsPitched', '0.0'))
+                    if '.' in ip_str:
+                        full, frac = ip_str.split('.')
+                        l7_outs += (int(full) * 3) + int(frac)
+                    else: 
+                        l7_outs += int(ip_str) * 3
                         
-                        valid_splits = [s for s in splits if s.get('date', '') < fecha_hoy]
-                        valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
-                        last_7 = valid_splits[:7]
-                        juegos_lanzados = len(last_7)
-                        
-                        for game in last_7:
-                            g_stats = game.get('stat', {})
-                            k = int(g_stats.get('strikeOuts', 0))
-                            l7_ks += k
-                            ks_list.append(k)
-                            ip_str = str(g_stats.get('inningsPitched', '0.0'))
-                            if '.' in ip_str:
-                                full, frac = ip_str.split('.')
-                                l7_outs += (int(full) * 3) + int(frac)
-                            else: l7_outs += int(ip_str) * 3
-                                
-                        ks_hoy_real = 0
-                        outs_hoy_real = 0
-                        for s in splits:
-                            if s.get('date') == fecha_hoy:
-                                gs = s.get('stat', {})
-                                ks_hoy_real += int(gs.get('strikeOuts', 0))
-                                ip_str = str(gs.get('inningsPitched', '0.0'))
-                                if '.' in ip_str:
-                                    full, frac = ip_str.split('.')
-                                    outs_hoy_real += (int(full) * 3) + int(frac)
-                                else:
-                                    outs_hoy_real += int(ip_str) * 3
-                                
+                for s in all_splits:
+                    if s.get('date') == fecha_hoy:
+                        gs = s.get('stat', {})
+                        ks_hoy_real += int(gs.get('strikeOuts', 0))
+                        ip_str = str(gs.get('inningsPitched', '0.0'))
+                        if '.' in ip_str:
+                            full, frac = ip_str.split('.')
+                            outs_hoy_real += (int(full) * 3) + int(frac)
+                        else:
+                            outs_hoy_real += int(ip_str) * 3
+                            
                 if juegos_lanzados == 0 or l7_outs == 0: continue
 
                 ks_sorted = sorted(ks_list)
@@ -518,16 +541,13 @@ def get_strikeout_hunters(fecha_hoy):
                     season_pa = max(1, season_pa - pa_equipo_hoy)
                 except: pass
                 
-                # 1. Calculamos porcentajes reales
                 season_k_pct = season_ks / season_pa if season_pa > 1 else 0.225
                 l10_k_pct = l10_ks / l10_pa if l10_pa > 1 else season_k_pct
                 
-                # 2. ÍNDICE DE VULNERABILIDAD RIVAL
                 blended_k_pct = (season_k_pct * 0.40) + (l10_k_pct * 0.60)
                 factor_rival = blended_k_pct / 0.225
                 factor_rival = max(0.80, min(1.20, factor_rival))
 
-                # 3. Calculamos el promedio de Innings Pitched (IP) y formateamos para la tabla
                 avg_ip = (l7_outs / 3.0) / juegos_lanzados
                 factor_ip = min(1.0, avg_ip / 6.0)
                 
@@ -536,14 +556,9 @@ def get_strikeout_hunters(fecha_hoy):
                 outs_sobrantes = avg_outs_redondeado % 3
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
 
-                # 4. Proyección matemática PURA
                 proj_k = (median_k * factor_rival * factor_ip)
-                
-                # REDONDEO de la proyección a número entero para la pantalla
                 proj_k_redondeada = int(round(proj_k))
                 
-                # 5. CÁLCULO DE PROBABILIDAD PARA LA BAJA (UNDER 4.5)
-                # Poisson usa proj_k (la proyección exacta con decimales) para que el cálculo sea perfecto.
                 meta_ks_max = 4 
                 prob_under = poisson.cdf(meta_ks_max, proj_k) if proj_k > 0 else 1.0
                 prob_under_pct = int(round(prob_under * 100))
@@ -562,15 +577,13 @@ def get_strikeout_hunters(fecha_hoy):
                     "👕 Equipo": p_team,
                     "⚔️ Rival": opp_name,
                     "⏱️ Proy. IP": ip_pantalla,
-                    "🔥 K/9 (L7)": k9,
+                    "❄️ K/9 (L7)": k9,
                     "🎯 Proy. Ponches": proj_k_redondeada,
-                    "score": proj_k, # Guardamos el decimal exacto de forma invisible para desempatar
+                    "score": proj_k, 
                     "prob_under_pct": prob_under_pct,
                     "📝 Evaluación": eval_str
                 })
 
-        # ORDENAR POR MAYOR PROBABILIDAD DEL UNDER 4.5
-        # En caso de empate porcentual, usamos la proyección exacta más baja (-x['score']) como desempate
         pitchers_data.sort(key=lambda x: (x['prob_under_pct'], -x['score']), reverse=True)
         top_4 = pitchers_data[:4]
 
