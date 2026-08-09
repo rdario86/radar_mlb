@@ -506,12 +506,10 @@ def get_strikeout_hunters(fecha_hoy):
                             valid_splits = [s for s in splits if s.get('date', '') < fecha_hoy]
                             valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
                             
-                            # Extraemos cómo se ha ponchado este equipo en sus ÚLTIMOS 10 JUEGOS
                             for t_game in valid_splits[:10]:
                                 l10_ks += int(t_game.get('stat', {}).get('strikeOuts', 0))
                                 l10_pa += int(t_game.get('stat', {}).get('plateAppearances', 0))
                                 
-                            # Restamos lo de hoy por si el juego ya empezó
                             for t_game in splits:
                                 if t_game.get('date') == fecha_hoy:
                                     ks_equipo_hoy += int(t_game.get('stat', {}).get('strikeOuts', 0))
@@ -525,21 +523,20 @@ def get_strikeout_hunters(fecha_hoy):
                 season_k_pct = season_ks / season_pa if season_pa > 1 else 0.225
                 l10_k_pct = l10_ks / l10_pa if l10_pa > 1 else season_k_pct
                 
-                # 2. ÍNDICE DE VULNERABILIDAD RIVAL (40% Temp / 60% Racha Reciente)
+                # 2. ÍNDICE DE VULNERABILIDAD RIVAL
                 blended_k_pct = (season_k_pct * 0.40) + (l10_k_pct * 0.60)
-                
-                # 0.225 (22.5%) es el promedio histórico de ponches de la MLB
                 factor_rival = blended_k_pct / 0.225
-                
-                # 3. Limitamos el impacto entre 0.80x y 1.20x para proteger el algoritmo
                 factor_rival = max(0.80, min(1.20, factor_rival))
 
+                # 3. Calculamos el promedio de Innings Pitched (IP)
                 avg_ip = (l7_outs / 3.0) / juegos_lanzados
                 factor_ip = min(1.0, avg_ip / 6.0)
 
-                # 4. Proyección final combinando el talento del pitcher y la vulnerabilidad rival
+                # 4. Proyección matemática PURA (Sin restarle el 10%)
                 proj_k = (median_k * factor_rival * factor_ip)
                 proj_k_rounded = round(proj_k, 3)
+                
+                # Redondeo exacto a la meta más cercana
                 meta_ks = int(round(proj_k))
 
                 prob_meta = 1 - poisson.cdf(meta_ks - 1, proj_k) if proj_k > 0 else 0.0
@@ -558,6 +555,7 @@ def get_strikeout_hunters(fecha_hoy):
                     "⚾ Abridor": p_name,
                     "👕 Equipo": p_team,
                     "⚔️ Rival": opp_name,
+                    "⏱️ Proy. IP": f"{avg_ip:.1f}",  # <--- AQUÍ ESTÁ LA NUEVA COLUMNA
                     "🔥 K/9 (L7)": k9,
                     "🎯 Proy. Ponches": meta_ks,
                     "📝 Evaluación": eval_str,
@@ -565,6 +563,7 @@ def get_strikeout_hunters(fecha_hoy):
                     "prob_meta": prob_meta_pct
                 })
 
+        # ORDENAR POR PROBABILIDAD DE ÉXITO (La apuesta más segura va de #1)
         pitchers_data.sort(key=lambda x: (x['prob_meta'], x['score']), reverse=True)
         top_4 = pitchers_data[:4]
 
@@ -574,6 +573,7 @@ def get_strikeout_hunters(fecha_hoy):
                 "⚾ Abridor": r["⚾ Abridor"],
                 "👕 Equipo": r["👕 Equipo"],
                 "⚔️ Rival": r["⚔️ Rival"],
+                "⏱️ Proy. IP": r["⏱️ Proy. IP"],
                 "🔥 K/9 (L7)": r["🔥 K/9 (L7)"],
                 "🎯 Proy. Ponches": f"{r['🎯 Proy. Ponches']} Ks",
                 "🎲 Prob. Alcanzar Proy.": f"{r['prob_meta']}%",
@@ -582,6 +582,7 @@ def get_strikeout_hunters(fecha_hoy):
         return nuevo_top4
     except Exception:
         return []
+
 
 def get_detailed_pitcher_stats(pitcher_name, fecha_corte):
     res = {"IP": "0.0", "H": 0, "BB": 0, "K": 0, "ER": 0, "ERA": "4.50", "WHIP": "1.30"}
