@@ -565,7 +565,7 @@ def get_strikeout_hunters(fecha_hoy):
                     "prob_meta": prob_meta_pct
                 })
 
-        pitchers_data.sort(key=lambda x: (x['score'], x['⚾ Abridor']), reverse=True)
+        pitchers_data.sort(key=lambda x: (x['prob_meta'], x['score']), reverse=True)
         top_4 = pitchers_data[:4]
 
         nuevo_top4 = []
