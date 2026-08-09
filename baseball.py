@@ -531,6 +531,13 @@ def get_strikeout_hunters(fecha_hoy):
                 # 3. Calculamos el promedio de Innings Pitched (IP)
                 avg_ip = (l7_outs / 3.0) / juegos_lanzados
                 factor_ip = min(1.0, avg_ip / 6.0)
+                
+                # Transformamos el promedio a formato oficial de Béisbol (.1 y .2) para la tabla
+                avg_outs_redondeado = int(round(l7_outs / juegos_lanzados))
+                innings_enteros = avg_outs_redondeado // 3
+                outs_sobrantes = avg_outs_redondeado % 3
+                ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
+
 
                 # 4. Proyección matemática PURA (Sin restarle el 10%)
                 proj_k = (median_k * factor_rival * factor_ip)
@@ -555,7 +562,7 @@ def get_strikeout_hunters(fecha_hoy):
                     "⚾ Abridor": p_name,
                     "👕 Equipo": p_team,
                     "⚔️ Rival": opp_name,
-                    "⏱️ Proy. IP": f"{avg_ip:.1f}",  # <--- AQUÍ ESTÁ LA NUEVA COLUMNA
+                    "⏱️ Proy. IP": ip_pantalla,  # <--- AQUÍ ESTÁ LA NUEVA COLUMNA
                     "🔥 K/9 (L7)": k9,
                     "🎯 Proy. Ponches": meta_ks,
                     "📝 Evaluación": eval_str,
