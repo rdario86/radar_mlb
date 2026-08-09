@@ -414,7 +414,6 @@ def get_hit_hunters(anio, fecha_hoy):
     except Exception:
         return []
 
-
 def get_strikeout_hunters(fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
@@ -528,26 +527,26 @@ def get_strikeout_hunters(fecha_hoy):
                 factor_rival = blended_k_pct / 0.225
                 factor_rival = max(0.80, min(1.20, factor_rival))
 
-                # 3. Calculamos el promedio de Innings Pitched (IP)
+                # 3. Calculamos el promedio de Innings Pitched (IP) y formateamos para la tabla
                 avg_ip = (l7_outs / 3.0) / juegos_lanzados
                 factor_ip = min(1.0, avg_ip / 6.0)
                 
-                # Transformamos el promedio a formato oficial de Béisbol (.1 y .2) para la tabla
                 avg_outs_redondeado = int(round(l7_outs / juegos_lanzados))
                 innings_enteros = avg_outs_redondeado // 3
                 outs_sobrantes = avg_outs_redondeado % 3
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
 
-
-                # 4. Proyección matemática PURA (Sin restarle el 10%)
+                # 4. Proyección matemática PURA
                 proj_k = (median_k * factor_rival * factor_ip)
-                proj_k_rounded = round(proj_k, 3)
                 
-                # Redondeo exacto a la meta más cercana
-                meta_ks = int(round(proj_k))
-
-                prob_meta = 1 - poisson.cdf(meta_ks - 1, proj_k) if proj_k > 0 else 0.0
-                prob_meta_pct = int(round(prob_meta * 100))
+                # REDONDEO de la proyección a número entero para la pantalla
+                proj_k_redondeada = int(round(proj_k))
+                
+                # 5. CÁLCULO DE PROBABILIDAD PARA LA BAJA (UNDER 4.5)
+                # Poisson usa proj_k (la proyección exacta con decimales) para que el cálculo sea perfecto.
+                meta_ks_max = 4 
+                prob_under = poisson.cdf(meta_ks_max, proj_k) if proj_k > 0 else 1.0
+                prob_under_pct = int(round(prob_under * 100))
 
                 k9 = int(round((l7_ks / (l7_outs / 3.0)) * 9.0))
 
@@ -556,22 +555,23 @@ def get_strikeout_hunters(fecha_hoy):
                     if outs_hoy_real == 0:
                         eval_str = "🚫 No lanzó"
                     else:
-                        eval_str = f"✅ Acierto ({ks_hoy_real} Ks)" if ks_hoy_real >= meta_ks else f"❌ Fallo ({ks_hoy_real} Ks)"
+                        eval_str = f"✅ Acierto (Under: {ks_hoy_real} Ks)" if ks_hoy_real <= meta_ks_max else f"❌ Fallo (Over: {ks_hoy_real} Ks)"
 
                 pitchers_data.append({
                     "⚾ Abridor": p_name,
                     "👕 Equipo": p_team,
                     "⚔️ Rival": opp_name,
-                    "⏱️ Proy. IP": ip_pantalla,  # <--- AQUÍ ESTÁ LA NUEVA COLUMNA
+                    "⏱️ Proy. IP": ip_pantalla,
                     "🔥 K/9 (L7)": k9,
-                    "🎯 Proy. Ponches": meta_ks,
-                    "📝 Evaluación": eval_str,
-                    "score": proj_k_rounded,
-                    "prob_meta": prob_meta_pct
+                    "🎯 Proy. Ponches": proj_k_redondeada,
+                    "score": proj_k, # Guardamos el decimal exacto de forma invisible para desempatar
+                    "prob_under_pct": prob_under_pct,
+                    "📝 Evaluación": eval_str
                 })
 
-        # ORDENAR POR PROBABILIDAD DE ÉXITO (La apuesta más segura va de #1)
-        pitchers_data.sort(key=lambda x: (x['prob_meta'], x['score']), reverse=True)
+        # ORDENAR POR MAYOR PROBABILIDAD DEL UNDER 4.5
+        # En caso de empate porcentual, usamos la proyección exacta más baja (-x['score']) como desempate
+        pitchers_data.sort(key=lambda x: (x['prob_under_pct'], -x['score']), reverse=True)
         top_4 = pitchers_data[:4]
 
         nuevo_top4 = []
@@ -581,15 +581,13 @@ def get_strikeout_hunters(fecha_hoy):
                 "👕 Equipo": r["👕 Equipo"],
                 "⚔️ Rival": r["⚔️ Rival"],
                 "⏱️ Proy. IP": r["⏱️ Proy. IP"],
-                "🔥 K/9 (L7)": r["🔥 K/9 (L7)"],
                 "🎯 Proy. Ponches": f"{r['🎯 Proy. Ponches']} Ks",
-                "🎲 Prob. Alcanzar Proy.": f"{r['prob_meta']}%",
+                "📉 Prob. Under 4.5": f"{r['prob_under_pct']}%",
                 "📝 Evaluación": r["📝 Evaluación"]
             })
         return nuevo_top4
     except Exception:
         return []
-
 
 def get_detailed_pitcher_stats(pitcher_name, fecha_corte):
     res = {"IP": "0.0", "H": 0, "BB": 0, "K": 0, "ER": 0, "ERA": "4.50", "WHIP": "1.30"}
