@@ -821,7 +821,7 @@ if st.session_state.df_mlb is not None:
     
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📅 Cartelera del Día",
-    "🔥 Caza-Ponches",
+    "❄️ Caza-Bajas",
     "🔹 Caza-Hits",
     "🧮 Calculadora +EV",
     "📊 Auditoría Semanal",
@@ -1024,7 +1024,7 @@ if st.session_state.df_mlb is not None:
 
             excel_ponches = convertir_df_a_excel(df_k, "Ponches")
             st.download_button(
-                label="📥 Descargar Caza-Ponches (Excel)",
+                label="📥 Descargar Caza-Bajas (Excel)",
                 data=excel_ponches,
                 file_name=f"caza_ponches_{st.session_state.fecha_hoy}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1035,13 +1035,13 @@ if st.session_state.df_mlb is not None:
 
             if total_evaluados > 0:
                 efectividad = (aciertos / total_evaluados) * 100
-                st.markdown("### 📊 Rendimiento Caza-Ponches")
+                st.markdown("### 📊 Rendimiento Caza-Bajas")
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Lanzadores Evaluados", total_evaluados)
                 c2.metric("Metas Superadas", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
         elif clave_k not in st.session_state:
-            st.info("Presiona el botón para cazar ponches del día.")
+            st.info("Presiona el botón para cazar bajas del día.")
                 
     with tab3:
         st.markdown("### 🔹 Radar de Hits: Probabilidad de 1+ Imparables")
