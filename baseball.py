@@ -608,7 +608,8 @@ def get_strikeout_hunters(fecha_hoy):
         return nuevo_top4
     except Exception:
         return []
-
+
+
 def get_detailed_pitcher_stats(pitcher_name, fecha_corte):
     res = {"IP": "0.0", "H": 0, "BB": 0, "K": 0, "ER": 0, "ERA": "4.50", "WHIP": "1.30"}
     if not pitcher_name or pitcher_name == 'TBD': return res
@@ -1229,10 +1230,10 @@ if st.session_state.df_mlb is not None:
                 resultados.append({
                     "Fecha": fecha_str,
                     "Ganadores": f"{aciertos_gan}/{total_gan}",
-                    "Ponches": f"{aciertos_k}/{total_k}",
+                    "Baja de Ponches": f"{aciertos_k}/{total_k}",
                     "Hits": f"{aciertos_hits}/{total_hits}",
                     "Efect. Ganadores (%)": round(aciertos_gan/total_gan*100, 1) if total_gan else 0,
-                    "Efect. Ponches (%)": round(aciertos_k/total_k*100, 1) if total_k else 0,
+                    "Efect. Baja de Ponches (%)": round(aciertos_k/total_k*100, 1) if total_k else 0,
                     "Efect. Hits (%)": round(aciertos_hits/total_hits*100, 1) if total_hits else 0
                 })
 
