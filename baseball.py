@@ -1227,13 +1227,14 @@ if st.session_state.df_mlb is not None:
                 fallos_hits = sum(1 for h in hits_data if '❌' in h['📝 Evaluación'])
                 total_hits = aciertos_hits + fallos_hits
 
+                # AQUI ESTÁ LA CORRECCIÓN CLAVE DE LOS NOMBRES
                 resultados.append({
                     "Fecha": fecha_str,
                     "Ganadores": f"{aciertos_gan}/{total_gan}",
-                    "Baja de Ponches": f"{aciertos_k}/{total_k}",
+                    "Bajas (Under)": f"{aciertos_k}/{total_k}",
                     "Hits": f"{aciertos_hits}/{total_hits}",
                     "Efect. Ganadores (%)": round(aciertos_gan/total_gan*100, 1) if total_gan else 0,
-                    "Efect. Baja de Ponches (%)": round(aciertos_k/total_k*100, 1) if total_k else 0,
+                    "Efect. Bajas (%)": round(aciertos_k/total_k*100, 1) if total_k else 0,
                     "Efect. Hits (%)": round(aciertos_hits/total_hits*100, 1) if total_hits else 0
                 })
 
@@ -1260,10 +1261,11 @@ if st.session_state.df_mlb is not None:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
 
+                # AQUI SE CORRIGIERON LAS LLAVES PARA LA SUMA MATEMÁTICA
                 total_gan_acc = sum(int(r["Ganadores"].split('/')[0]) for r in resultados)
                 total_gan_eval = sum(int(r["Ganadores"].split('/')[1]) for r in resultados)
-                total_k_acc = sum(int(r["Ponches"].split('/')[0]) for r in resultados)
-                total_k_eval = sum(int(r["Ponches"].split('/')[1]) for r in resultados)
+                total_k_acc = sum(int(r["Bajas (Under)"].split('/')[0]) for r in resultados)
+                total_k_eval = sum(int(r["Bajas (Under)"].split('/')[1]) for r in resultados)
                 total_hits_acc = sum(int(r["Hits"].split('/')[0]) for r in resultados)
                 total_hits_eval = sum(int(r["Hits"].split('/')[1]) for r in resultados)
 
@@ -1271,7 +1273,7 @@ if st.session_state.df_mlb is not None:
                 st.markdown("### 📊 Resumen Acumulado (7 días)")
                 col1, col2, col3 = st.columns(3)
                 col1.metric("Ganadores", f"{total_gan_acc}/{total_gan_eval}", f"{round(total_gan_acc/total_gan_eval*100,1)}%" if total_gan_eval else "0%")
-                col2.metric("Ponches", f"{total_k_acc}/{total_k_eval}", f"{round(total_k_acc/total_k_eval*100,1)}%" if total_k_eval else "0%")
+                col2.metric("Bajas (Under 4.5)", f"{total_k_acc}/{total_k_eval}", f"{round(total_k_acc/total_k_eval*100,1)}%" if total_k_eval else "0%")
                 col3.metric("Hits (1+)", f"{total_hits_acc}/{total_hits_eval}", f"{round(total_hits_acc/total_hits_eval*100,1)}%" if total_hits_eval else "0%")
             else:
                 st.warning("No se encontraron juegos finalizados en los últimos 7 días.")
