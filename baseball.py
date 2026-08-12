@@ -588,10 +588,12 @@ def get_strikeout_hunters(fecha_hoy):
                     "🎯 Proy. Ponches": proj_k_redondeada,
                     "score": proj_k, 
                     "prob_under_pct": prob_under_pct,
+                    "prob_under": prob_under,
                     "📝 Evaluación": eval_str
                 })
 
-        pitchers_data.sort(key=lambda x: (x['prob_under_pct'], -x['score']), reverse=True)
+        # Ordenamos estrictamente por la probabilidad decimal exacta, de mayor a menor
+        pitchers_data.sort(key=lambda x: x['prob_under_exacta'], reverse=True)
         top_4 = pitchers_data[:4]
 
         nuevo_top4 = []
