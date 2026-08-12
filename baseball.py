@@ -1004,6 +1004,9 @@ if st.session_state.df_mlb is not None:
                 .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
 
             st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
+            
+            # --- NUEVA NOTA ANALÍTICA ---
+            st.caption("📝 **Nota Analítica:** El dato junto a los abridores muestra el WHIP de sus últimas 7 salidas.")
 
             excel_cartelera = convertir_df_a_excel(df_resultados, "Cartelera")
             st.download_button(
