@@ -603,7 +603,6 @@ def get_strikeout_hunters(fecha_hoy):
                 "👕 Equipo": r["👕 Equipo"],
                 "⚔️ Rival": r["⚔️ Rival"],
                 "⏱️ Proy. IP": r["⏱️ Proy. IP"],
-                "🎯 Proy. Ponches": f"{r['🎯 Proy. Ponches']} Ks",
                 "📉 Prob. Under 4.5": f"{r['prob_under_pct']}%",
                 "📝 Evaluación": r["📝 Evaluación"]
             })
