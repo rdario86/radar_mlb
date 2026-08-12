@@ -588,7 +588,7 @@ def get_strikeout_hunters(fecha_hoy):
                     "🎯 Proy. Ponches": proj_k_redondeada,
                     "score": proj_k, 
                     "prob_under_pct": prob_under_pct,
-                    "prob_under": prob_under,
+                    "prob_under_exacta": prob_under,
                     "📝 Evaluación": eval_str
                 })
 
