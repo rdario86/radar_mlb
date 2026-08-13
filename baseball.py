@@ -394,8 +394,20 @@ def get_hit_hunters(anio, fecha_hoy):
                 else:
                     eval_str = "✅ Acierto" if hits_hoy_real >= 1 else "❌ Fallo"
 
+            # 🌟 FILTRO DE ALTA SEGURIDAD (HITS) 🌟
+            avg_l10_val = l10_hits / l10_ab if l10_ab > 0 else 0
+            
+            es_alta_seg = False
+            # Regla 1, 2 y 3: Alta prob (>80%), Racha caliente (>.300), Pitcher vulnerable (WHIP > 1.30)
+            if prob_1hit_pct >= 80 and avg_l10_val >= 0.300 and whip_abridor >= 1.30:
+                # Regla 4: Ventaja de Pelotón (Manos opuestas o Switch Hitter)
+                if bat_hand == 'S' or bat_hand != opp_hand:
+                    es_alta_seg = True
+
+            nombre_bateador = f"⭐ {p_name}" if es_alta_seg else p_name
+
             resultados.append({
-                "⚾ Bateador": p_name,
+                "⚾ Bateador": nombre_bateador,
                 "👕 Equipo": team_name,
                 "⚔️ Rival": f"{opp_pitcher or 'TBD'} ({opp_hand})",
                 "🏟️ Condición": condicion,
@@ -1378,7 +1390,7 @@ if st.session_state.df_mlb is not None:
         
         st.markdown("#### 🎯 Cartelera del Día (A Ganar)")
         st.markdown("Para que un equipo reciba la estrella de seguridad, debe superar una evaluación obligatoria en 3 dimensiones:")
-        st.markdown("* **🧠 Probabilidad IA (>65%):** El modelo multivariable (Elo, Rachas, Suerte Pitagórica, Splits) debe otorgarle al menos un 65% de probabilidad base de ganar el encuentro.")
+        st.markdown("* **🧠 Probabilidad IA (>=65%):** El modelo multivariable (Elo, Rachas, Suerte Pitagórica, Splits) debe otorgarle al menos un 65% de probabilidad base de ganar el encuentro.")
         st.markdown("* **⚔️ Mismatch de Abridores:** Nuestro abridor debe ser la élite reciente (WHIP menor a **1.15**), mientras que el abridor rival debe mostrar grave descontrol o ser bateado con facilidad (WHIP mayor a **1.35**).")
         st.markdown("* **🛡️ Blindaje de Bullpen:** El relevo de nuestro equipo no puede arruinar la ventaja. Exigimos que el bullpen haya mantenido un WHIP por debajo de **1.35** en los últimos 7 días.")
 
@@ -1389,3 +1401,12 @@ if st.session_state.df_mlb is not None:
         st.markdown("* **📈 Probabilidad Extrema (>=85%):** La fórmula de Poisson debe proyectar al menos un 85% de posibilidades reales de que el lanzador logre 4 ponches o menos.")
         st.markdown("* **⏱️ Correa Corta (Proy. IP <= 4.0):** El mánager no debe dejarlo pasar del quinto inning. Matemáticamente, a menos outs lanzados, menos oportunidades de sumar ponches fortuitos.")
         st.markdown("* **🧊 Lanzador de Contacto (K/9 <= 6):** El lanzador debe tener una tendencia natural a inducir batazos de out en el cuadro en lugar de abanicar bateadores (Promedio de 6 ponches o menos cada 9 innings).")
+
+        st.markdown("---")
+
+        st.markdown("#### 🔹 Caza-Hits (1+ Imparables)")
+        st.markdown("El mercado de hits es de alta varianza. Para que un bateador obtenga la estrella, debe enfrentar la 'Tormenta Perfecta' en el plato:")
+        st.markdown("* **🎯 Probabilidad Base (>=80%):** El modelo binomial debe calcular un 80% o más de probabilidad de éxito.")
+        st.markdown("* **🔥 Bateador Encendido (AVG L10 >= .300):** El jugador debe estar viendo la pelota a la perfección, bateando para .300 o más en sus últimos 10 juegos.")
+        st.markdown("* **🛡️ Pitcher Vulnerable (WHIP >= 1.25):** El abridor rival debe permitir tráfico constante en las bases, aumentando las ventanas de oportunidad.")
+        st.markdown("* **⚔️ Ventaja de Pelotón (Platoon Advantage):** El bateador debe pararse en el plato del lado opuesto al brazo de lanzar del abridor (Ej: Bateador Zurdo vs Pitcher Derecho), obteniendo la máxima ventaja visual.")
