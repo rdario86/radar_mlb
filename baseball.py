@@ -962,11 +962,11 @@ if st.session_state.df_mlb is not None:
                             pct_final = int(round(max(min(pct_bruto, 0.99), 0.01) * 100))
 
                            # 🌟 FILTRO DE ALTA SEGURIDAD (GANADORES) 🌟
-                            # 1. Probabilidad general altísima (>68%)
+                            # 1. Probabilidad general altísima (>65%)
                             # 2. Mismatch de abridores: Nuestro abridor con WHIP élite (<1.15) vs Abridor descontrolado (>1.35)
                             # 3. Blindaje de Bullpen: Nuestro relevo NO puede ser un desastre (WHIP de Bullpen < 1.35)
                             es_alta_seg = False
-                            if pct_final >= 68:
+                            if pct_final >= 65:
                                 if ganador == e_local and whip_l < 1.15 and whip_v > 1.35 and whip_bp_l < 1.35:
                                     es_alta_seg = True
                                 elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35 and whip_bp_v < 1.35:
@@ -1378,7 +1378,7 @@ if st.session_state.df_mlb is not None:
         
         st.markdown("#### 🎯 Cartelera del Día (A Ganar)")
         st.markdown("Para que un equipo reciba la estrella de seguridad, debe superar una evaluación obligatoria en 3 dimensiones:")
-        st.markdown("* **🧠 Probabilidad IA (>68%):** El modelo multivariable (Elo, Rachas, Suerte Pitagórica, Splits) debe otorgarle al menos un 68% de probabilidad base de ganar el encuentro.")
+        st.markdown("* **🧠 Probabilidad IA (>65%):** El modelo multivariable (Elo, Rachas, Suerte Pitagórica, Splits) debe otorgarle al menos un 65% de probabilidad base de ganar el encuentro.")
         st.markdown("* **⚔️ Mismatch de Abridores:** Nuestro abridor debe ser la élite reciente (WHIP menor a **1.15**), mientras que el abridor rival debe mostrar grave descontrol o ser bateado con facilidad (WHIP mayor a **1.35**).")
         st.markdown("* **🛡️ Blindaje de Bullpen:** El relevo de nuestro equipo no puede arruinar la ventaja. Exigimos que el bullpen haya mantenido un WHIP por debajo de **1.35** en los últimos 7 días.")
 
