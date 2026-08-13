@@ -1408,5 +1408,5 @@ if st.session_state.df_mlb is not None:
         st.markdown("El mercado de hits es de alta varianza. Para que un bateador obtenga la estrella, debe enfrentar la 'Tormenta Perfecta' en el plato:")
         st.markdown("* **🎯 Probabilidad Base (>=80%):** El modelo binomial debe calcular un 80% o más de probabilidad de éxito.")
         st.markdown("* **🔥 Bateador Encendido (AVG L10 >= .300):** El jugador debe estar viendo la pelota a la perfección, bateando para .300 o más en sus últimos 10 juegos.")
-        st.markdown("* **🛡️ Pitcher Vulnerable (WHIP >= 1.25):** El abridor rival debe permitir tráfico constante en las bases, aumentando las ventanas de oportunidad.")
+        st.markdown("* **🛡️ Pitcher Vulnerable (WHIP >= 1.30):** El abridor rival debe permitir tráfico constante en las bases, aumentando las ventanas de oportunidad.")
         st.markdown("* **⚔️ Ventaja de Pelotón (Platoon Advantage):** El bateador debe pararse en el plato del lado opuesto al brazo de lanzar del abridor (Ej: Bateador Zurdo vs Pitcher Derecho), obteniendo la máxima ventaja visual.")
