@@ -1191,6 +1191,9 @@ if st.session_state.df_mlb is not None:
             resultados = []
             barra_progreso = st.progress(0)
             estado = st.empty()
+            
+            # Llamamos al cerebro principal que ya está entrenado con las 6 variables
+            clf_principal = st.session_state.modelo_ia 
 
             for idx, fecha_str in enumerate(fechas_auditar):
                 estado.write(f"⏳ Procesando {fecha_str} (Analizando pitcheo de élite)...")
@@ -1204,10 +1207,6 @@ if st.session_state.df_mlb is not None:
                 if len(df_filtrado_aud) == 0:
                     barra_progreso.progress((idx + 1) / len(fechas_auditar))
                     continue
-
-                df_filtrado_aud['Win'] = (df_filtrado_aud['Carreras_Local'] > df_filtrado_aud['Carreras_Visitante']).astype(int)
-                clf_aud = RandomForestClassifier(max_depth=MAX_DEPTH_ELO, random_state=42)
-                clf_aud.fit(df_filtrado_aud[['Elo_L', 'Elo_V']], df_filtrado_aud['Win'])
 
                 aciertos_gan_premium = 0
                 total_gan_premium = 0
@@ -1239,9 +1238,9 @@ if st.session_state.df_mlb is not None:
                     whip_bp_l = get_bullpen_metrics(home_id, fecha_str)
                     whip_bp_v = get_bullpen_metrics(away_id, fecha_str)
 
-                    # Usar el cerebro IA para la auditoría
+                    # Usamos el cerebro IA principal con las 6 variables intactas
                     X_auditoria = np.array([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]])
-                    prob_ml = clf_aud.predict_proba(X_auditoria)[0][1]
+                    prob_ml = clf_principal.predict_proba(X_auditoria)[0][1]
                     
                     pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
                     prob_final_local = prob_ml + pitcher_adj
@@ -1274,8 +1273,6 @@ if st.session_state.df_mlb is not None:
                 aciertos_k = sum(1 for k in premium_k_data if '✅' in k['📝 Evaluación'])
                 fallos_k = sum(1 for k in premium_k_data if '❌' in k['📝 Evaluación'])
                 total_k = aciertos_k + fallos_k
-
-                # SE ELIMINÓ EL BLOQUE "GET_HIT_HUNTERS" PARA ACELERAR EL PROCESO
 
                 resultados.append({
                     "Fecha": fecha_str,
@@ -1320,7 +1317,7 @@ if st.session_state.df_mlb is not None:
                 col2.metric("Aciertos Bajas Premium", f"{total_k_acc}/{total_k_eval}", f"{round(total_k_acc/total_k_eval*100,1)}%" if total_k_eval else "0%")
             else:
                 st.warning("No se encontraron juegos finalizados en los últimos 7 días.")
-
+                
     with tab6:
         st.markdown("### 🔬 Lupa de Pitcheo: Radiografía de 7 Juegos")
         st.markdown("Selecciona un partido de la cartelera para desglosar el desempeño crudo del Abridor y el Bullpen en su muestra reciente.")
