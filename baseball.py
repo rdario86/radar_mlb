@@ -617,6 +617,8 @@ def get_strikeout_hunters(fecha_hoy):
                 "📝 Evaluación": r["📝 Evaluación"]
             })
         return nuevo_top4
+    except Exception:
+        return []
 
 def get_detailed_pitcher_stats(pitcher_name, fecha_corte):
     res = {"IP": "0.0", "H": 0, "BB": 0, "K": 0, "ER": 0, "ERA": "4.50", "WHIP": "1.30"}
