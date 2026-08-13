@@ -598,18 +598,25 @@ def get_strikeout_hunters(fecha_hoy):
 
         nuevo_top4 = []
         for r in top_4:
+            # 🌟 FILTRO DE ALTA SEGURIDAD (BAJAS) 🌟
+            ip_val = float(r["⏱️ Proy. IP"])
+            
+            es_alta_seg = False
+            if r["prob_under_pct"] >= 85 and ip_val <= 4.0 and r["❄️ K/9 (L7)"] <= 6:
+                es_alta_seg = True
+                
+            nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
+
             nuevo_top4.append({
-                "⚾ Abridor": r["⚾ Abridor"],
+                "⚾ Abridor": nombre_abridor,
                 "👕 Equipo": r["👕 Equipo"],
                 "⚔️ Rival": r["⚔️ Rival"],
                 "⏱️ Proy. IP": r["⏱️ Proy. IP"],
+                "❄️ K/9 (L7)": r["❄️ K/9 (L7)"],  # <--- AQUÍ REGRESAMOS LA COLUMNA A LA PANTALLA
                 "📉 Prob. Under 4.5": f"{r['prob_under_pct']}%",
                 "📝 Evaluación": r["📝 Evaluación"]
             })
         return nuevo_top4
-    except Exception:
-        return []
-
 
 def get_detailed_pitcher_stats(pitcher_name, fecha_corte):
     res = {"IP": "0.0", "H": 0, "BB": 0, "K": 0, "ER": 0, "ERA": "4.50", "WHIP": "1.30"}
@@ -841,13 +848,14 @@ if st.session_state.df_mlb is not None:
         st.sidebar.success("✅ IA lista y guardada.")
     # 🟢 FIN DE LA OPTIMIZACIÓN 🟢
     
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📅 Cartelera del Día",
     "❄️ Caza-Bajas",
     "🔹 Caza-Hits",
     "🧮 Calculadora +EV",
     "📊 Auditoría Semanal",
-    "🔬 Lupa de Pitcheo"
+    "🔬 Lupa de Pitcheo",
+    "⭐ Filtros Premium"
 ])
     
     with tab1:
@@ -951,7 +959,19 @@ if st.session_state.df_mlb is not None:
                             pct_bruto = prob_final_local if prob_final_local > 0.5 else 1.0 - prob_final_local
                             pct_final = int(round(max(min(pct_bruto, 0.99), 0.01) * 100))
 
-                            jugada_str = f"{ganador} (A Ganar)"
+                           # 🌟 FILTRO DE ALTA SEGURIDAD (GANADORES) 🌟
+                            # 1. Probabilidad general altísima (>68%)
+                            # 2. Mismatch de abridores: Nuestro abridor con WHIP élite (<1.15) vs Abridor descontrolado (>1.35)
+                            # 3. Blindaje de Bullpen: Nuestro relevo NO puede ser un desastre (WHIP de Bullpen < 1.35)
+                            es_alta_seg = False
+                            if pct_final >= 68:
+                                if ganador == e_local and whip_l < 1.15 and whip_v > 1.35 and whip_bp_l < 1.35:
+                                    es_alta_seg = True
+                                elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35 and whip_bp_v < 1.35:
+                                    es_alta_seg = True
+
+                            # Agregamos la estrella automática al nombre del equipo
+                            jugada_str = f"⭐ {ganador} (A Ganar)" if es_alta_seg else f"{ganador} (A Ganar)"
                             prob_str = f"{pct_final}%"
                             score_val = pct_final
 
@@ -1347,3 +1367,23 @@ if st.session_state.df_mlb is not None:
                     st.dataframe(df_lupa_estilizado, use_container_width=True, hide_index=True)
                     
                     st.caption("📝 **Nota Analítica:** La tabla muestra las últimas 7 salidas de los abridores y todo el trabajo de los relevistas en los últimos 7 días. ER = Carreras Limpias.")
+
+    with tab7:
+        st.markdown("### ⭐ Manual de Jugadas Premium")
+        st.markdown("El radar asigna automáticamente una estrella (⭐) a las jugadas que cumplen con estrictos criterios matemáticos de altísima seguridad. Aquí están las reglas exactas que el algoritmo exige de forma interna para encender la alerta de **Jugada Premium**.")
+        
+        st.markdown("---")
+        
+        st.markdown("#### 🎯 Cartelera del Día (A Ganar)")
+        st.markdown("Para que un equipo reciba la estrella de seguridad, debe superar una evaluación obligatoria en 3 dimensiones:")
+        st.markdown("* **🧠 Probabilidad IA (>68%):** El modelo multivariable (Elo, Rachas, Suerte Pitagórica, Splits) debe otorgarle al menos un 68% de probabilidad base de ganar el encuentro.")
+        st.markdown("* **⚔️ Mismatch de Abridores:** Nuestro abridor debe ser la élite reciente (WHIP menor a **1.15**), mientras que el abridor rival debe mostrar grave descontrol o ser bateado con facilidad (WHIP mayor a **1.35**).")
+        st.markdown("* **🛡️ Blindaje de Bullpen:** El relevo de nuestro equipo no puede arruinar la ventaja. Exigimos que el bullpen haya mantenido un WHIP por debajo de **1.35** en los últimos 7 días.")
+
+        st.markdown("---")
+
+        st.markdown("#### ❄️ Caza-Bajas (Under 4.5 Ponches)")
+        st.markdown("Para que la Baja de un lanzador sea considerada una jugada maestra, debe cumplir estas 3 reglas inquebrantables simultáneamente:")
+        st.markdown("* **📈 Probabilidad Extrema (>=85%):** La fórmula de Poisson debe proyectar al menos un 85% de posibilidades reales de que el lanzador logre 4 ponches o menos.")
+        st.markdown("* **⏱️ Correa Corta (Proy. IP <= 4.0):** El mánager no debe dejarlo pasar del quinto inning. Matemáticamente, a menos outs lanzados, menos oportunidades de sumar ponches fortuitos.")
+        st.markdown("* **🧊 Lanzador de Contacto (K/9 <= 6):** El lanzador debe tener una tendencia natural a inducir batazos de out en el cuadro en lugar de abanicar bateadores (Promedio de 6 ponches o menos cada 9 innings).")
