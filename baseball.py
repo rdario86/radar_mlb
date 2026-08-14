@@ -568,13 +568,16 @@ def get_strikeout_hunters(fecha_hoy):
                 outs_sobrantes = avg_outs_redondeado % 3
                 
                 # -------------------------------------------------------------
-                # NUEVO FILTRO: Mínimo 3 innings de proyección obligatorios
+                # NUEVO FILTRO DE VOLUMEN: Entre 3.0 y 5.0 innings obligatorios
                 # -------------------------------------------------------------
-                if innings_enteros < 3:
+                if innings_enteros < 3 or innings_enteros > 5:
+                    continue
+                # Si proyecta exactamente 5 innings, no puede tener outs sobrantes (ej. 5.1 o 5.2 se descartan)
+                if innings_enteros == 5 and outs_sobrantes > 0:
                     continue
                 
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
-
+
                 proj_k = (median_k * factor_rival * factor_ip)
                 proj_k_redondeada = int(round(proj_k))
                 
