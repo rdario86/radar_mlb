@@ -137,10 +137,10 @@ def get_starting_pitchers(juego):
 
 def get_pitcher_whip(pitcher_name, fecha_corte):
     avg_whip = 1.30 
-    if not pitcher_name or pitcher_name == 'TBD': return avg_whip
+    if not pitcher_name or pitcher_name == 'TBD': return avg_whip, 0.0
     try:
         players = statsapi.lookup_player(pitcher_name)
-        if not players: return avg_whip
+        if not players: return avg_whip, 0.0
         player_id = players[0]['id']
         try:
             raw_data = statsapi.get('people', {'personIds': player_id, 'hydrate': 'stats(group=[pitching],type=[gameLog])'})
@@ -167,11 +167,12 @@ def get_pitcher_whip(pitcher_name, fecha_corte):
                                     else:
                                         total_outs += int(ip_str) * 3
                                         
-                                if total_outs > 0: return round((total_hits + total_bb) / (total_outs / 3.0), 2)
-                                else: return avg_whip
+                                if total_outs > 0: 
+                                    return round((total_hits + total_bb) / (total_outs / 3.0), 2), (total_outs / 3.0)
+                                else: return avg_whip, 0.0
         except Exception: pass
-        return avg_whip
-    except: return avg_whip
+        return avg_whip, 0.0
+    except: return avg_whip, 0.0
 
 def get_bullpen_metrics(team_id, fecha_corte):
     avg_whip = 1.30 
@@ -374,7 +375,7 @@ def get_hit_hunters(anio, fecha_hoy):
                 platoon_mod = 0.95 # Misma mano (Ej: Bateador Derecho vs Pitcher Derecho)
 
             # 3. Evaluación del Pitcheo Rival
-            whip_abridor = get_pitcher_whip(opp_pitcher, fecha_hoy)
+            whip_abridor, _ = get_pitcher_whip(opp_pitcher, fecha_hoy)
             whip_bullpen = get_bullpen_metrics(opp_id, fecha_hoy)
             whip_combinado = (whip_abridor * 0.6) + (whip_bullpen * 0.4)
             factor_pitcheo = whip_combinado / 1.30
@@ -577,7 +578,8 @@ def get_strikeout_hunters(fecha_hoy):
                     continue
                 
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
-
+
+
                 proj_k = (median_k * factor_rival * factor_ip)
                 proj_k_redondeada = int(round(proj_k))
                 
@@ -935,8 +937,8 @@ if st.session_state.df_mlb is not None:
                             luck_v = get_pythagorean_luck(e_visita, df_filtrado)
                             split_l, split_v = get_splits_win_pct(e_local, e_visita, df_filtrado)
 
-                            whip_l = get_pitcher_whip(p_local, st.session_state.fecha_hoy)
-                            whip_v = get_pitcher_whip(p_visita, st.session_state.fecha_hoy)
+                            whip_l, ip_l = get_pitcher_whip(p_local, st.session_state.fecha_hoy)
+                            whip_v, ip_v = get_pitcher_whip(p_visita, st.session_state.fecha_hoy)
                             
                             whip_bp_l = get_bullpen_metrics(home_id, st.session_state.fecha_hoy)
                             whip_bp_v = get_bullpen_metrics(away_id, st.session_state.fecha_hoy)
@@ -982,9 +984,9 @@ if st.session_state.df_mlb is not None:
                             # 3. Blindaje de Bullpen: Nuestro relevo NO puede ser un desastre (WHIP de Bullpen < 1.35)
                             es_alta_seg = False
                             if pct_final >= 65:
-                                if ganador == e_local and whip_l < 1.15 and whip_v > 1.35 and whip_bp_l < 1.35:
+                                if ganador == e_local and whip_l < 1.15 and whip_v > 1.35 and ip_l >= 20.0:
                                     es_alta_seg = True
-                                elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35 and whip_bp_v < 1.35:
+                                elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35 and ip_v >= 20.0:
                                     es_alta_seg = True
 
                             # Agregamos la estrella automática al nombre del equipo
@@ -1235,8 +1237,8 @@ if st.session_state.df_mlb is not None:
                     luck_v = get_pythagorean_luck(e_visita, df_filtrado_aud)
                     split_l, split_v = get_splits_win_pct(e_local, e_visita, df_filtrado_aud)
                     
-                    whip_l = get_pitcher_whip(p_local, fecha_str)
-                    whip_v = get_pitcher_whip(p_visita, fecha_str)
+                    whip_l, ip_l = get_pitcher_whip(p_local, fecha_str)
+                    whip_v, ip_v = get_pitcher_whip(p_visita, fecha_str)
                     
                     whip_bp_l = get_bullpen_metrics(home_id, fecha_str)
                     whip_bp_v = get_bullpen_metrics(away_id, fecha_str)
@@ -1254,10 +1256,10 @@ if st.session_state.df_mlb is not None:
 
                     # 🌟 FILTRO DE LA ESTRELLA PARA LA AUDITORÍA
                     es_alta_seg = False
-                    if pct_final >= 68:
-                        if ganador == e_local and whip_l < 1.15 and whip_v > 1.35:
+                    if pct_final >= 65:
+                        if ganador == e_local and whip_l < 1.15 and whip_v > 1.35 and ip_l >= 20.0:
                             es_alta_seg = True
-                        elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35:
+                        elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35 and ip_v >= 20.0:
                             es_alta_seg = True
 
                     # Si cumplió las reglas Premium, la evaluamos
