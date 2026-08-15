@@ -960,8 +960,8 @@ if st.session_state.df_mlb is not None:
                             split_diff = s_l - s_v
 
                             # Extraemos a los lanzadores
-                            whip_l = get_pitcher_whip(p_local, st.session_state.fecha_hoy)
-                            whip_v = get_pitcher_whip(p_visita, st.session_state.fecha_hoy)
+                            whip_l, ip_l = get_pitcher_whip(p_local, st.session_state.fecha_hoy)
+                            whip_v, ip_v = get_pitcher_whip(p_visita, st.session_state.fecha_hoy)
                             whip_bp_l = get_bullpen_metrics(home_id, st.session_state.fecha_hoy)
                             whip_bp_v = get_bullpen_metrics(away_id, st.session_state.fecha_hoy)
 
