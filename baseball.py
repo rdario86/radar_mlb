@@ -399,8 +399,8 @@ def get_hit_hunters(anio, fecha_hoy):
             avg_l10_val = l10_hits / l10_ab if l10_ab > 0 else 0
             
             es_alta_seg = False
-            # Regla 1, 2 y 3: Alta prob (>80%), Racha caliente (>.300), Pitcheo Global vulnerable (WHIP Combinado >= 1.30)
-            if prob_1hit_pct >= 80 and avg_l10_val >= 0.300 and whip_combinado >= 1.30:
+            # Regla 1, 2 y 3: Alta prob (>=85%), Racha élite (>=.350), Pitcheo Global muy vulnerable (WHIP Combinado >= 1.35)
+            if prob_1hit_pct >= 85 and avg_l10_val >= 0.350 and whip_combinado >= 1.35:
                 # Regla 4: Ventaja de Pelotón (Manos opuestas o Switch Hitter)
                 if bat_hand == 'S' or bat_hand != opp_hand:
                     es_alta_seg = True
@@ -1413,7 +1413,7 @@ if st.session_state.df_mlb is not None:
 
         st.markdown("#### 🔹 Caza-Hits (1+ Imparables)")
         st.markdown("El mercado de hits es de alta varianza. Para que un bateador obtenga la estrella, debe enfrentar la 'Tormenta Perfecta' en el plato:")
-        st.markdown("* **🎯 Probabilidad Base (>=80%):** El modelo binomial debe calcular un 80% o más de probabilidad de éxito.")
-        st.markdown("* **🔥 Bateador Encendido (AVG L10 >= .300):** El jugador debe estar viendo la pelota a la perfección, bateando para .300 o más en sus últimos 10 juegos.")
-        st.markdown("* **🛡️ Pitcheo Global Vulnerable (WHIP >= 1.30):** No basta con un mal abridor; el WHIP combinado (60% Abridor + 40% Bullpen) debe ser de 1.30 o superior, garantizando que el bateador enfrentará lanzadores permisivos durante los 9 innings.")
+        st.markdown("* **🎯 Probabilidad Base (>=80%):** El modelo binomial debe calcular un 85% o más de probabilidad de éxito.")
+        st.markdown("* **🔥 Bateador Encendido (AVG L10 >= .350):** El jugador debe estar viendo la pelota a la perfección, bateando para .350 o más en sus últimos 10 juegos.")
+        st.markdown("* **🛡️ Pitcheo Global Vulnerable (WHIP >= 1.35):** No basta con un mal abridor; el WHIP combinado (60% Abridor + 40% Bullpen) debe ser de 1.35 o superior, garantizando que el bateador enfrentará lanzadores permisivos durante los 9 innings.")
         st.markdown("* **⚔️ Ventaja de Pelotón (Platoon Advantage):** El bateador debe pararse en el plato del lado opuesto al brazo de lanzar del abridor (Ej: Bateador Zurdo vs Pitcher Derecho), obteniendo la máxima ventaja visual.")
