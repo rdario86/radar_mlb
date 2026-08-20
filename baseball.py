@@ -356,8 +356,6 @@ def get_hit_hunters(anio, fecha_hoy):
                             hits_hoy_real += int(game.get('stat', {}).get('hits', 0))
                             ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
 
-            if game_status in ['Final', 'Game Over'] and ab_hoy_real == 0: continue
-
             season_hits = max(0, season_hits - hits_hoy_real)
             season_ab = max(1, season_ab - ab_hoy_real)
             l10_ab = max(1, l10_ab)
