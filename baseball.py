@@ -1072,7 +1072,7 @@ if st.session_state.df_mlb is not None:
         else:
             st.info("Presiona el botón 'Analizar y Evaluar Cartelera' para generar las predicciones del día.")
 
-   with tab2:
+    with tab2:
         st.markdown("### ⚡ Radar de Ponches: Proyecciones Over/Under 4.5")
         if st.button("🎯 Cazar Ponches del Día (Top 4)", type="primary", use_container_width=True):
             with st.spinner("Calculando vulnerabilidades y distribuciones de Poisson..."):
