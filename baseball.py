@@ -553,14 +553,14 @@ def get_strikeout_hunters(fecha_hoy):
                 # -------------------------------------------------------------
                 # JUGADA FORZADA BASADA ESTRICTAMENTE EN SU PERFIL K/9
                 # -------------------------------------------------------------
-                if k9 < 6.0:
+                if k9 < 9.0: # <--- Ajuste: Si tiene menos de 1 K por Inning
                     tipo_jugada = "Under 4.5"
                     prob_exacta = poisson.cdf(4, proj_k) if proj_k > 0 else 1.0
                     limite_eval = 4
-                else:
+                else: # <--- Ajuste: Solo verdaderos ponchadores (1+ K por Inning)
                     tipo_jugada = "Over 5.5"
                     prob_exacta = 1 - poisson.cdf(5, proj_k) if proj_k > 0 else 0.0
-                    limite_eval = 5 # Over 5.5 significa 6 o más ponches
+                    limite_eval = 5 
 
                 prob_pct = int(round(prob_exacta * 100))
 
@@ -1345,7 +1345,7 @@ if st.session_state.df_mlb is not None:
         st.markdown("---")
 
         st.markdown("#### 🔥 Caza-Ponches (Línea Dinámica 4.5 / 5.5)")
-        st.markdown("El radar escanea el perfil del lanzador y le asigna una línea de apuestas personalizada: 4.5 si es un lanzador de contacto (K/9 < 6.0) o 5.5 si es un ponchador activo (K/9 >= 6.0).")
+        st.markdown("El radar escanea el perfil del lanzador y le asigna una línea de apuestas personalizada: 4.5 si es un lanzador promedio o de contacto (K/9 < 9.0) o 5.5 si es un verdadero As abanicador (K/9 >= 9.0).")
         
         st.markdown("**⭐ Para el UNDER (La Correa Corta):**")
         st.markdown("* **📉 Probabilidad Extrema (>=85%):** Proyección aplastante de Poisson favoreciendo las bajas.")
