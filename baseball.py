@@ -16,7 +16,7 @@ st.title("⚾ Predicción MLB: Radar Diario Automatizado")
 st.markdown("Proyección Sabermétrica")
 st.markdown("---")
 
-MAX_DEPTH_ELO = 5               
+MAX_DEPTH_ELO = 5                
 
 MLB_TEAM_WHITELIST = [
     "Arizona Diamondbacks", "Atlanta Braves", "Baltimore Orioles", "Boston Red Sox", 
@@ -203,13 +203,9 @@ def get_bullpen_metrics(team_id, fecha_corte):
                 box = statsapi.boxscore_data(game_id)
                 team_side = 'home' if juego.get('home_id') == team_id else 'away'
                 
-                # Lista de TODOS los lanzadores del equipo en ESE juego
                 pitchers_list = box.get(team_side, {}).get('pitchers', [])
+                if len(pitchers_list) <= 1: continue 
                 
-                # Si solo hay 1 lanzador, fue un juego completo (no hubo bullpen)
-                if len(pitchers_list) <= 1: continue
-                
-                # AISLAMOS EL BULLPEN: Ignoramos al [0] (el abridor)
                 relevistas = pitchers_list[1:]
                 
                 outs_juego_bp = 0
@@ -235,7 +231,6 @@ def get_bullpen_metrics(team_id, fecha_corte):
                     total_outs_7d += outs
                     outs_juego_bp += outs
                     
-                # Fatiga: Sumar solo carga real del bullpen en los últimos 3 días
                 if str_3d <= game_date < fecha_corte:
                     bp_outs_3d += outs_juego_bp
                     
@@ -243,16 +238,13 @@ def get_bullpen_metrics(team_id, fecha_corte):
                 
         if total_outs_7d == 0: return avg_whip
         
-        # WHIP EXCLUSIVO DE RELEVISTAS
         whip_7d = (total_hits_7d + total_bb_7d) / (total_outs_7d / 3.0)
         
-        # Penalización por Fatiga Real: Si el bullpen lanzó más de 30 outs (~10 innings) en 3 días.
         fatigue_mod = 1.0
         if bp_outs_3d > 30:
             fatigue_mod = 1.0 + ((bp_outs_3d - 30) * 0.008) 
             
         final_whip = round(whip_7d * fatigue_mod, 2)
-        # Tolerancia ampliada: Los relevistas pueden ser un desastre total o intocables
         return max(0.80, min(3.00, final_whip))
     except Exception: 
         return avg_whip
@@ -262,9 +254,8 @@ def get_hit_hunters(anio, fecha_hoy):
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
         equipos_hoy = {}
         
-        # Función rápida interna para saber si el pitcher es Zurdo (L) o Derecho (R)
         def get_pitcher_hand(p_name):
-            if not p_name or p_name == 'TBD': return 'R' # Por defecto asumimos derecho
+            if not p_name or p_name == 'TBD': return 'R' 
             try:
                 pl = statsapi.lookup_player(p_name)
                 return pl[0].get('pitchHand', {}).get('code', 'R') if pl else 'R'
@@ -276,7 +267,6 @@ def get_hit_hunters(anio, fecha_hoy):
                 h_id = juego.get('home_id')
                 a_id = juego.get('away_id')
                 
-                # Extraemos la mano de los abridores de hoy
                 hand_local = get_pitcher_hand(p_local)
                 hand_visita = get_pitcher_hand(p_visita)
                 
@@ -328,7 +318,6 @@ def get_hit_hunters(anio, fecha_hoy):
             if current_team_obj:
                 team_name = current_team_obj.get('name', team_name)
                 
-            # Extraemos la mano del Bateador: 'L' (Zurdo), 'R' (Derecho), 'S' (Switch/Ambidiestro)
             bat_hand = person.get('batSide', {}).get('code', 'R')
                 
             stats_blocks = person.get('stats', [])
@@ -360,29 +349,24 @@ def get_hit_hunters(anio, fecha_hoy):
             season_ab = max(1, season_ab - ab_hoy_real)
             l10_ab = max(1, l10_ab)
 
-            # 1. Promedio base
             avg_index_base = (season_hits / season_ab * 0.6) + (l10_hits / l10_ab * 0.4)
 
-            # 2. SPLITS: Ventaja de Pelotón (Platoon Advantage)
-            platoon_mod = 1.0 # Neutro
+            platoon_mod = 1.0 
             if bat_hand == 'S': 
-                platoon_mod = 1.05 # Ambidiestro siempre tiene ventaja
+                platoon_mod = 1.05 
             elif bat_hand != opp_hand:
-                platoon_mod = 1.05 # Manos contrarias (Ej: Bateador Zurdo vs Pitcher Derecho)
+                platoon_mod = 1.05 
             else:
-                platoon_mod = 0.95 # Misma mano (Ej: Bateador Derecho vs Pitcher Derecho)
+                platoon_mod = 0.95 
 
-            # 3. Evaluación del Pitcheo Rival
             whip_abridor, _ = get_pitcher_whip(opp_pitcher, fecha_hoy)
             whip_bullpen = get_bullpen_metrics(opp_id, fecha_hoy)
             whip_combinado = (whip_abridor * 0.6) + (whip_bullpen * 0.4)
             factor_pitcheo = whip_combinado / 1.30
             factor_pitcheo = max(0.90, min(1.10, factor_pitcheo))
             
-            # 4. Ajuste Final: Promedio × Factor Pitcheo × Ventaja de Pelotón
             avg_index_ajustado = avg_index_base * factor_pitcheo * platoon_mod
 
-            # 5. Cálculo Binomial Realista
             prob_1hit = 1 - (1 - avg_index_ajustado) ** 3.8
             prob_1hit_pct = int(round(prob_1hit * 100))
 
@@ -393,13 +377,10 @@ def get_hit_hunters(anio, fecha_hoy):
                 else:
                     eval_str = "✅ Acierto" if hits_hoy_real >= 1 else "❌ Fallo"
 
-            # 🌟 FILTRO DE ALTA SEGURIDAD (HITS) 🌟
             avg_l10_val = l10_hits / l10_ab if l10_ab > 0 else 0
             
             es_alta_seg = False
-            # Regla 1, 2 y 3: Alta prob (>=85%), Racha élite (>=.350), Pitcheo Global muy vulnerable (WHIP Combinado >= 1.35)
             if prob_1hit_pct >= 85 and avg_l10_val >= 0.350 and whip_combinado >= 1.35:
-                # Regla 4: Ventaja de Pelotón (Manos opuestas o Switch Hitter)
                 if bat_hand == 'S' or bat_hand != opp_hand:
                     es_alta_seg = True
 
@@ -476,13 +457,11 @@ def get_strikeout_hunters(fecha_hoy):
                 juegos_lanzados = len(last_7)
                 
                 l7_ks = 0; l7_outs = 0; ks_hoy_real = 0; outs_hoy_real = 0
-                ks_list = []
                 
                 for game in last_7:
                     g_stats = game.get('stat', {})
                     k = int(g_stats.get('strikeOuts', 0))
                     l7_ks += k
-                    ks_list.append(k) 
                     ip_str = str(g_stats.get('inningsPitched', '0.0'))
                     if '.' in ip_str:
                         full, frac = ip_str.split('.')
@@ -502,9 +481,6 @@ def get_strikeout_hunters(fecha_hoy):
                             outs_hoy_real += int(ip_str) * 3
                             
                 if juegos_lanzados == 0 or l7_outs == 0: continue
-
-                ks_sorted = sorted(ks_list)
-                median_k = ks_sorted[len(ks_sorted)//2] if ks_sorted else 0
 
                 anio_str = str(fecha_hoy)[:4]
                 team_raw = statsapi.get('teams', {
@@ -556,7 +532,7 @@ def get_strikeout_hunters(fecha_hoy):
                 outs_sobrantes = avg_outs_redondeado % 3
                 
                 # -------------------------------------------------------------
-                # 1. NUEVO FILTRO DE VOLUMEN: Solo piso (>= 3.0 IP). ¡Sin techo!
+                # NUEVO FILTRO DE VOLUMEN: Solo piso (>= 3.0 IP). ¡Sin techo!
                 # -------------------------------------------------------------
                 if avg_outs_redondeado < 9:
                     continue
@@ -564,8 +540,7 @@ def get_strikeout_hunters(fecha_hoy):
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
 
                 # -------------------------------------------------------------
-                # 2. PROMEDIO PONDERADO POR VOLUMEN (En lugar de Mediana)
-                # Calculamos su tasa real de Ks por out y la proyectamos a su volumen
+                # PROMEDIO PONDERADO POR VOLUMEN 
                 # -------------------------------------------------------------
                 k_per_out = l7_ks / l7_outs if l7_outs > 0 else 0
                 promedio_k_ponderado = k_per_out * avg_outs_redondeado
@@ -574,9 +549,7 @@ def get_strikeout_hunters(fecha_hoy):
                 proj_k = (promedio_k_ponderado * factor_rival)
                 
                 # -------------------------------------------------------------
-                # 3. NUEVA LÍNEA FIJA: 5.5 PONCHES
-                # Under 5.5 = 5 ponches o menos (poisson.cdf de 5)
-                # Over 5.5 = 6 ponches o más
+                # NUEVA LÍNEA FIJA: 5.5 PONCHES
                 # -------------------------------------------------------------
                 prob_under = poisson.cdf(5, proj_k) if proj_k > 0 else 1.0
                 prob_over = 1 - prob_under
@@ -614,22 +587,20 @@ def get_strikeout_hunters(fecha_hoy):
                     "📝 Evaluación": eval_str
                 })
 
-        # Ordenamos estrictamente por la probabilidad decimal exacta, de mayor a menor
         pitchers_data.sort(key=lambda x: x['prob_exacta'], reverse=True)
         top_4 = pitchers_data[:4]
 
         nuevo_top4 = []
         for r in top_4:
             ip_val = float(r["⏱️ Proy. IP"])
-            k9_val = float(r["❄️ K/9 (L7)"])
+            k9_val = float(r["🔥 K/9 (L7)"])
             
             es_alta_seg = False
             
-            # 🌟 FILTRO SIMÉTRICO CALIBRADO PARA LA REALIDAD DE MLB
-            if r["tipo_jugada"] == "Under 4.5":
+            if r["tipo_jugada"] == "Under 5.5":
                 if r["prob_pct"] >= 75 and ip_val <= 4.0 and k9_val <= 6.5:
                     es_alta_seg = True
-            else: # Over 4.5
+            else: # Over 5.5
                 if r["prob_pct"] >= 60 and ip_val >= 4.1 and k9_val >= 9.0:
                     es_alta_seg = True
                 
@@ -674,7 +645,7 @@ def get_detailed_pitcher_stats(pitcher_name, fecha_corte):
                                 total_hits += int(g_stats.get('hits', 0))
                                 total_bb += int(g_stats.get('baseOnBalls', 0))
                                 total_k += int(g_stats.get('strikeOuts', 0))
-                                total_er += int(g_stats.get('earnedRuns', 0)) # Carreras Limpias
+                                total_er += int(g_stats.get('earnedRuns', 0))
                                 ip_str = str(g_stats.get('inningsPitched', '0.0'))
                                 if '.' in ip_str:
                                     full, frac = ip_str.split('.')
@@ -716,9 +687,9 @@ def get_detailed_bullpen_stats(team_id, fecha_corte):
                 box = statsapi.boxscore_data(game_id)
                 team_side = 'home' if juego.get('home_id') == team_id else 'away'
                 pitchers_list = box.get(team_side, {}).get('pitchers', [])
-                if len(pitchers_list) <= 1: continue # Solo lanzó el abridor
+                if len(pitchers_list) <= 1: continue 
                 
-                relevistas = pitchers_list[1:] # Eliminamos al abridor
+                relevistas = pitchers_list[1:] 
                 for pid in relevistas:
                     p_key = f"ID{pid}"
                     p_stats = box.get(team_side, {}).get('players', {}).get(p_key, {}).get('stats', {}).get('pitching', {})
@@ -820,10 +791,7 @@ if st.session_state.df_mlb is not None:
     df_historico = st.session_state.df_mlb.copy()
     df_filtrado = df_historico[df_historico['Date'] < st.session_state.fecha_hoy].copy()
     
-    # 🟢 INICIO DE LA OPTIMIZACIÓN SEGURA DE VELOCIDAD 🟢
     necesita_entrenar = True
-    
-    # Si la IA ya fue entrenada hoy, la sacamos de la memoria al instante
     if st.session_state.modelo_ia is not None and st.session_state.fecha_modelo == st.session_state.fecha_hoy:
         necesita_entrenar = False
         clf = st.session_state.modelo_ia
@@ -853,11 +821,9 @@ if st.session_state.df_mlb is not None:
                 x_racha_diff.append(r_l - r_v)
                 
                 x_h2h.append(get_h2h_wins(e_local, e_visita, df_pasado))
-                
                 luck_l = get_pythagorean_luck(e_local, df_pasado)
                 luck_v = get_pythagorean_luck(e_visita, df_pasado)
                 x_luck_diff.append(luck_l - luck_v)
-                
                 s_l, s_v = get_splits_win_pct(e_local, e_visita, df_pasado)
                 x_split_diff.append(s_l - s_v)
                 
@@ -873,11 +839,9 @@ if st.session_state.df_mlb is not None:
         clf = RandomForestClassifier(n_estimators=150, max_depth=MAX_DEPTH_ELO, random_state=42)
         clf.fit(df_train[features], df_train['Win'])
         
-        # Guardamos la IA en la caja fuerte para no repetir este ciclo en el próximo clic
         st.session_state.modelo_ia = clf
         st.session_state.fecha_modelo = st.session_state.fecha_hoy
         st.sidebar.success("✅ IA lista y guardada.")
-    # 🟢 FIN DE LA OPTIMIZACIÓN 🟢
     
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📅 Cartelera del Día",
@@ -955,33 +919,9 @@ if st.session_state.df_mlb is not None:
                             whip_bp_l = get_bullpen_metrics(home_id, st.session_state.fecha_hoy)
                             whip_bp_v = get_bullpen_metrics(away_id, st.session_state.fecha_hoy)
 
-                            # 1. PREDICCIÓN MULTIVARIABLE (Enviamos las 6 variables a la IA)
                             X_hoy = np.array([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]])
                             prob_ml = clf.predict_proba(X_hoy)[0][1]
 
-                            # 2. AJUSTE DE PITCHEO MANUAL (Los lanzadores de hoy)
-                            pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
-                            
-                            prob_final_local = prob_ml + pitcher_adj
-
-                            # Calculamos las variables del día de hoy
-                            racha_diff = get_recent_form(e_local, df_filtrado) - get_recent_form(e_visita, df_filtrado)
-                            h2h_l = get_h2h_wins(e_local, e_visita, df_filtrado)
-                            luck_diff = get_pythagorean_luck(e_local, df_filtrado) - get_pythagorean_luck(e_visita, df_filtrado)
-                            s_l, s_v = get_splits_win_pct(e_local, e_visita, df_filtrado)
-                            split_diff = s_l - s_v
-
-                            # Extraemos a los lanzadores
-                            whip_l, ip_l = get_pitcher_whip(p_local, st.session_state.fecha_hoy)
-                            whip_v, ip_v = get_pitcher_whip(p_visita, st.session_state.fecha_hoy)
-                            whip_bp_l = get_bullpen_metrics(home_id, st.session_state.fecha_hoy)
-                            whip_bp_v = get_bullpen_metrics(away_id, st.session_state.fecha_hoy)
-
-                            # 1. PREDICCIÓN PURA DE LA IA (Machine Learning)
-                            X_hoy = np.array([[elo_l, elo_v, racha_diff, h2h_l, luck_diff, split_diff]])
-                            prob_ml = clf.predict_proba(X_hoy)[0][1]
-
-                            # 2. AJUSTE DE PITCHEO MANUAL (Hybrid Model)
                             pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
                             
                             prob_final_local = prob_ml + pitcher_adj
@@ -990,10 +930,6 @@ if st.session_state.df_mlb is not None:
                             pct_bruto = prob_final_local if prob_final_local > 0.5 else 1.0 - prob_final_local
                             pct_final = int(round(max(min(pct_bruto, 0.99), 0.01) * 100))
 
-                           # 🌟 FILTRO DE ALTA SEGURIDAD (GANADORES) 🌟
-                            # 1. Probabilidad general altísima (>65%)
-                            # 2. Mismatch de abridores: Nuestro abridor con WHIP élite (<1.15) vs Abridor descontrolado (>1.35)
-                            # 3. Blindaje de Bullpen: Nuestro relevo NO puede ser un desastre (WHIP de Bullpen < 1.35)
                             es_alta_seg = False
                             if pct_final >= 65:
                                 if ganador == e_local and whip_l < 1.15 and whip_v > 1.35 and ip_l >= 20.0:
@@ -1001,7 +937,6 @@ if st.session_state.df_mlb is not None:
                                 elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35 and ip_v >= 20.0:
                                     es_alta_seg = True
 
-                            # Agregamos la estrella automática al nombre del equipo
                             jugada_str = f"⭐ {ganador} (A Ganar)" if es_alta_seg else f"{ganador} (A Ganar)"
                             prob_str = f"{pct_final}%"
                             score_val = pct_final
@@ -1055,7 +990,6 @@ if st.session_state.df_mlb is not None:
 
             st.dataframe(df_estilizado, use_container_width=True, hide_index=True)
             
-            # --- NUEVA NOTA ANALÍTICA ---
             st.caption("📝 **Nota Analítica:** El dato junto a los abridores muestra el WHIP de sus últimas 7 salidas.")
 
             excel_cartelera = convertir_df_a_excel(df_resultados, "Cartelera")
@@ -1207,7 +1141,6 @@ if st.session_state.df_mlb is not None:
             barra_progreso = st.progress(0)
             estado = st.empty()
             
-            # Llamamos al cerebro principal que ya está entrenado con las 6 variables
             clf_principal = st.session_state.modelo_ia 
 
             for idx, fecha_str in enumerate(fechas_auditar):
@@ -1253,7 +1186,6 @@ if st.session_state.df_mlb is not None:
                     whip_bp_l = get_bullpen_metrics(home_id, fecha_str)
                     whip_bp_v = get_bullpen_metrics(away_id, fecha_str)
 
-                    # Usamos el cerebro IA principal con las 6 variables intactas
                     X_auditoria = np.array([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]])
                     prob_ml = clf_principal.predict_proba(X_auditoria)[0][1]
                     
@@ -1264,7 +1196,6 @@ if st.session_state.df_mlb is not None:
                     pct_bruto = prob_final_local if prob_final_local > 0.5 else 1.0 - prob_final_local
                     pct_final = int(round(max(min(pct_bruto, 0.99), 0.01) * 100))
 
-                    # 🌟 FILTRO DE LA ESTRELLA PARA LA AUDITORÍA
                     es_alta_seg = False
                     if pct_final >= 65:
                         if ganador == e_local and whip_l < 1.15 and whip_v > 1.35 and ip_l >= 20.0:
@@ -1272,7 +1203,6 @@ if st.session_state.df_mlb is not None:
                         elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35 and ip_v >= 20.0:
                             es_alta_seg = True
 
-                    # Si cumplió las reglas Premium, la evaluamos
                     if es_alta_seg:
                         r_local = juego.get('home_score', 0)
                         r_visita = juego.get('away_score', 0)
@@ -1280,9 +1210,7 @@ if st.session_state.df_mlb is not None:
                         if r_ganador == ganador: aciertos_gan_premium += 1
                         total_gan_premium += 1
 
-                # 🌟 EVALUACIÓN ESTRICTA DE CAZA-PONCHES PREMIUM
                 k_data = get_strikeout_hunters(fecha_str)
-                # Filtramos la lista para auditar solo los que se ganaron la estrella
                 premium_k_data = [k for k in k_data if '⭐' in k['⚾ Abridor']]
                 
                 aciertos_k = sum(1 for k in premium_k_data if '✅' in k['📝 Evaluación'])
@@ -1376,9 +1304,9 @@ if st.session_state.df_mlb is not None:
                     def color_lupa_whip(val):
                         try:
                             v = float(val)
-                            if v < 1.00: return 'color: #00cc66; font-weight: bold;' # Verde (< 1.00)
-                            elif v <= 1.30: return 'color: #e6b800; font-weight: bold;' # Amarillo (1.00 a 1.30)
-                            else: return 'color: #ff4d4d; font-weight: bold;' # Rojo (> 1.30)
+                            if v < 1.00: return 'color: #00cc66; font-weight: bold;' 
+                            elif v <= 1.30: return 'color: #e6b800; font-weight: bold;' 
+                            else: return 'color: #ff4d4d; font-weight: bold;' 
                         except: return ''
                         
                     def color_lupa_era(val):
@@ -1413,16 +1341,16 @@ if st.session_state.df_mlb is not None:
 
         st.markdown("---")
 
-        st.markdown("#### 🔥 Caza-Ponches (Línea Fija O/U 4.5)")
-        st.markdown("Opera evaluando estrictamente a lanzadores dentro de una ventana de volumen (entre 3.0 y menos de 6.0 innings proyectados).")
+        st.markdown("#### 🔥 Caza-Ponches (Línea Fija O/U 5.5)")
+        st.markdown("Opera evaluando estrictamente a lanzadores dentro de una ventana de volumen con un piso mínimo de 3.0 innings proyectados.")
         
-        st.markdown("**⭐ Para el UNDER 4.5 (La Correa Corta):**")
-        st.markdown("* **📉 Probabilidad Extrema (>=85%):** Proyección abrumadora del modelo de Poisson.")
+        st.markdown("**⭐ Para el UNDER 5.5 (La Correa Corta):**")
+        st.markdown("* **📉 Probabilidad Extrema (>=75%):** Proyección abrumadora del modelo de Poisson para el promedio de la liga.")
         st.markdown("* **⏱️ Volumen Corto (IP <= 4.0):** El límite proyectado garantiza que no enfrente demasiados bateadores.")
-        st.markdown("* **🧊 Pitcher de Contacto (K/9 <= 6.0):** Promedia muchos menos ponches (0.66 Ks/Inning) del promedio de la liga.")
+        st.markdown("* **🧊 Pitcher de Contacto (K/9 <= 6.5):** Promedia muchos menos ponches (0.72 Ks/Inning) del promedio de la liga.")
         
-        st.markdown("**⭐ Para el OVER 4.5 (El Ponchador Ineficiente):**")
-        st.markdown("* **📈 Probabilidad Clara (>=75%):** Amplia ventaja estadística contra un equipo que se poncha mucho.")
+        st.markdown("**⭐ Para el OVER 5.5 (El As Ponchador):**")
+        st.markdown("* **📈 Probabilidad Clara (>=60%):** Ventaja estadística sólida contra un equipo que se poncha mucho.")
         st.markdown("* **⏱️ Volumen Firme (IP >= 4.1):** Aseguramos que lanzará lo suficiente (13+ outs) para acercarse a la línea matemática.")
         st.markdown("* **🔥 Perfil Abanicador (K/9 >= 9.0):** Garantiza al menos 1 ponche por cada inning completado.")
 
@@ -1430,7 +1358,7 @@ if st.session_state.df_mlb is not None:
 
         st.markdown("#### 🔹 Caza-Hits (1+ Imparables)")
         st.markdown("El mercado de hits es de alta varianza. Para que un bateador obtenga la estrella, debe enfrentar la 'Tormenta Perfecta' en el plato:")
-        st.markdown("* **🎯 Probabilidad Base (>=80%):** El modelo binomial debe calcular un 85% o más de probabilidad de éxito.")
+        st.markdown("* **🎯 Probabilidad Base (>=85%):** El modelo binomial debe calcular un 85% o más de probabilidad de éxito.")
         st.markdown("* **🔥 Bateador Encendido (AVG L10 >= .350):** El jugador debe estar viendo la pelota a la perfección, bateando para .350 o más en sus últimos 10 juegos.")
-        st.markdown("* **🛡️ Pitcheo Global Vulnerable (WHIP >= 1.35):** No basta con un mal abridor; el WHIP combinado (60% Abridor + 40% Bullpen) debe ser de 1.35 o superior, garantizando que el bateador enfrentará lanzadores permisivos durante los 9 innings.")
+        st.markdown("* **🛡️ Pitcheo Global Vulnerable (WHIP Combinado >= 1.35):** No basta con un mal abridor; el WHIP combinado (60% Abridor + 40% Bullpen) debe ser de 1.35 o superior, garantizando que el bateador enfrentará lanzadores permisivos durante los 9 innings.")
         st.markdown("* **⚔️ Ventaja de Pelotón (Platoon Advantage):** El bateador debe pararse en el plato del lado opuesto al brazo de lanzar del abridor (Ej: Bateador Zurdo vs Pitcher Derecho), obteniendo la máxima ventaja visual.")
