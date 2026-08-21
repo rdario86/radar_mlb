@@ -1126,12 +1126,15 @@ if st.session_state.df_mlb is not None:
                 st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita_int}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")
 
     with tab5:
-        st.markdown("### 📊 Auditoría Premium (Últimos 7 Días)")
+        st.markdown("### 📊 Auditoría Premium (Últimos 7 Días previos a la fecha elegida)")
         st.markdown("Evalúa estrictamente la rentabilidad de las jugadas de Alta Seguridad (⭐). Al excluir el escaneo masivo de hits, esta auditoría carga mucho más rápido.")
 
         if st.button("🔍 Ejecutar Auditoría Premium", type="primary", use_container_width=True):
-            hoy = datetime.date.today()
-            fechas_auditar = [(hoy - datetime.timedelta(days=i+1)).strftime('%Y-%m-%d') for i in range(7)]
+            # Conectamos la auditoría al "Motor de Tiempo" del sidebar
+            fecha_base = datetime.datetime.strptime(st.session_state.fecha_hoy, '%Y-%m-%d').date()
+            
+            # Retrocedemos 7 días a partir de la fecha que hayas seleccionado
+            fechas_auditar = [(fecha_base - datetime.timedelta(days=i+1)).strftime('%Y-%m-%d') for i in range(7)]
 
             resultados = []
             barra_progreso = st.progress(0)
