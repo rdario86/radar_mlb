@@ -611,7 +611,7 @@ def get_strikeout_hunters(fecha_hoy):
                 "👕 Equipo": r["👕 Equipo"],
                 "⚔️ Rival": r["⚔️ Rival"],
                 "⏱️ Proy. IP": r["⏱️ Proy. IP"],
-                "🔥 K/9 (L7)": r["🔥 K/9 (L7)"],  
+                "🔥 K/9 (L7)": f"{k9_val:.1f}",  
                 "🎯 Jugada": r["tipo_jugada"],
                 "📉 Probabilidad": f"{r['prob_pct']}%",
                 "📝 Evaluación": r["📝 Evaluación"]
