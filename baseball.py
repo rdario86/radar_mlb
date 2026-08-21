@@ -1271,7 +1271,7 @@ if st.session_state.df_mlb is not None:
                         if r_ganador == ganador: aciertos_gan_premium += 1
                         total_gan_premium += 1
 
-                # 🌟 EVALUACIÓN ESTRICTA DE CAZA-BAJAS PREMIUM
+                # 🌟 EVALUACIÓN ESTRICTA DE CAZA-PONCHES PREMIUM
                 k_data = get_strikeout_hunters(fecha_str)
                 # Filtramos la lista para auditar solo los que se ganaron la estrella
                 premium_k_data = [k for k in k_data if '⭐' in k['⚾ Abridor']]
@@ -1283,9 +1283,9 @@ if st.session_state.df_mlb is not None:
                 resultados.append({
                     "Fecha": fecha_str,
                     "Ganadores ⭐": f"{aciertos_gan_premium}/{total_gan_premium}",
-                    "Bajas (Under) ⭐": f"{aciertos_k}/{total_k}",
+                    "Ponches O/U ⭐": f"{aciertos_k}/{total_k}",
                     "Efect. Ganadores (%)": round(aciertos_gan_premium/total_gan_premium*100, 1) if total_gan_premium else 0,
-                    "Efect. Bajas (%)": round(aciertos_k/total_k*100, 1) if total_k else 0
+                    "Efect. Caza-Ponches (%)": round(aciertos_k/total_k*100, 1) if total_k else 0
                 })
 
                 barra_progreso.progress((idx + 1) / len(fechas_auditar))
@@ -1313,14 +1313,14 @@ if st.session_state.df_mlb is not None:
 
                 total_gan_acc = sum(int(r["Ganadores ⭐"].split('/')[0]) for r in resultados)
                 total_gan_eval = sum(int(r["Ganadores ⭐"].split('/')[1]) for r in resultados)
-                total_k_acc = sum(int(r["Bajas (Under) ⭐"].split('/')[0]) for r in resultados)
-                total_k_eval = sum(int(r["Bajas (Under) ⭐"].split('/')[1]) for r in resultados)
+                total_k_acc = sum(int(r["Ponches O/U ⭐"].split('/')[0]) for r in resultados)
+                total_k_eval = sum(int(r["Ponches O/U ⭐"].split('/')[1]) for r in resultados)
 
                 st.markdown("---")
                 st.markdown("### 📊 Resumen Acumulado de Élite (7 días)")
                 col1, col2 = st.columns(2)
                 col1.metric("Aciertos Ganadores Premium", f"{total_gan_acc}/{total_gan_eval}", f"{round(total_gan_acc/total_gan_eval*100,1)}%" if total_gan_eval else "0%")
-                col2.metric("Aciertos Bajas Premium", f"{total_k_acc}/{total_k_eval}", f"{round(total_k_acc/total_k_eval*100,1)}%" if total_k_eval else "0%")
+                col2.metric("Aciertos Caza-Ponches Premium", f"{total_k_acc}/{total_k_eval}", f"{round(total_k_acc/total_k_eval*100,1)}%" if total_k_eval else "0%")
             else:
                 st.warning("No se encontraron juegos finalizados en los últimos 7 días.")
                 
