@@ -532,7 +532,7 @@ def get_strikeout_hunters(fecha_hoy):
                 outs_sobrantes = avg_outs_redondeado % 3
                 
                 # -------------------------------------------------------------
-                # NUEVO FILTRO DE VOLUMEN: Solo piso (>= 3.0 IP). ¡Sin techo!
+                # 1. NUEVO FILTRO DE VOLUMEN: Solo piso (>= 3.0 IP). ¡Sin techo!
                 # -------------------------------------------------------------
                 if avg_outs_redondeado < 9:
                     continue
@@ -540,7 +540,7 @@ def get_strikeout_hunters(fecha_hoy):
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
 
                 # -------------------------------------------------------------
-                # PROMEDIO PONDERADO POR VOLUMEN 
+                # 2. PROMEDIO PONDERADO POR VOLUMEN 
                 # -------------------------------------------------------------
                 k_per_out = l7_ks / l7_outs if l7_outs > 0 else 0
                 promedio_k_ponderado = k_per_out * avg_outs_redondeado
@@ -549,31 +549,39 @@ def get_strikeout_hunters(fecha_hoy):
                 proj_k = (promedio_k_ponderado * factor_rival)
                 
                 # -------------------------------------------------------------
-                # NUEVA LÍNEA FIJA: 5.5 PONCHES
+                # NUEVA LÍNEA DINÁMICA BASADA EN K/9 (El Toque Maestro)
                 # -------------------------------------------------------------
-                prob_under = poisson.cdf(5, proj_k) if proj_k > 0 else 1.0
+                k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1) if l7_outs > 0 else 0.0
+                
+                if k9 <= 6.0:
+                    linea_k = 4.5
+                    limite_under = 4
+                else:
+                    linea_k = 5.5
+                    limite_under = 5
+
+                # Calculamos usando el límite dinámico asignado al pitcher
+                prob_under = poisson.cdf(limite_under, proj_k) if proj_k > 0 else 1.0
                 prob_over = 1 - prob_under
                 
                 if prob_under >= prob_over:
-                    tipo_jugada = "Under 5.5"
+                    tipo_jugada = f"Under {linea_k}"
                     prob_pct = int(round(prob_under * 100))
                     prob_exacta = prob_under
                 else:
-                    tipo_jugada = "Over 5.5"
+                    tipo_jugada = f"Over {linea_k}"
                     prob_pct = int(round(prob_over * 100))
                     prob_exacta = prob_over
-
-                k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1)
 
                 eval_str = "⏳ Pendiente"
                 if g_status in ['Final', 'Game Over']:
                     if outs_hoy_real == 0:
                         eval_str = "🚫 No lanzó"
                     else:
-                        if tipo_jugada == "Under 5.5":
-                            eval_str = f"✅ Acierto (Under: {ks_hoy_real} Ks)" if ks_hoy_real <= 5 else f"❌ Fallo (Over: {ks_hoy_real} Ks)"
+                        if "Under" in tipo_jugada:
+                            eval_str = f"✅ Acierto (Under: {ks_hoy_real} Ks)" if ks_hoy_real <= limite_under else f"❌ Fallo (Over: {ks_hoy_real} Ks)"
                         else:
-                            eval_str = f"✅ Acierto (Over: {ks_hoy_real} Ks)" if ks_hoy_real >= 6 else f"❌ Fallo (Under: {ks_hoy_real} Ks)"
+                            eval_str = f"✅ Acierto (Over: {ks_hoy_real} Ks)" if ks_hoy_real > limite_under else f"❌ Fallo (Under: {ks_hoy_real} Ks)"
 
                 pitchers_data.append({
                     "⚾ Abridor": p_name,
@@ -581,13 +589,14 @@ def get_strikeout_hunters(fecha_hoy):
                     "⚔️ Rival": opp_name,
                     "⏱️ Proy. IP": ip_pantalla,
                     "🔥 K/9 (L7)": k9,
-                    "k_proyectados": int(round(proj_k)),
+                    "k_proyectados": int(round(proj_k)), 
                     "tipo_jugada": tipo_jugada,
                     "prob_pct": prob_pct,
                     "prob_exacta": prob_exacta,
                     "📝 Evaluación": eval_str
                 })
 
+        # Ordenamos estrictamente por la probabilidad decimal exacta, de mayor a menor
         pitchers_data.sort(key=lambda x: x['prob_exacta'], reverse=True)
         top_4 = pitchers_data[:4]
 
@@ -598,14 +607,12 @@ def get_strikeout_hunters(fecha_hoy):
             
             es_alta_seg = False
             
-            # 🌟 FILTRO SIMÉTRICO CALIBRADO PARA LA REALIDAD DE MLB
-            if r["tipo_jugada"] == "Under 5.5":
-                # Under: Exigimos que no pase del 5to inning completo
-                if r["prob_pct"] >= 75 and ip_val <= 5.0 and k9_val <= 6.5:
+            # 🌟 FILTRO DINÁMICO DE ESTRELLA (PROB >= 85% PARA AMBAS)
+            if "Under" in r["tipo_jugada"]:
+                if r["prob_pct"] >= 85 and ip_val <= 5.0:
                     es_alta_seg = True
-            else: # Over 5.5
-                # Over: Exigimos que lance MÁS del 5to inning (5.1 en adelante)
-                if r["prob_pct"] >= 60 and ip_val > 5.0 and k9_val >= 9.0:
+            else: # Over
+                if r["prob_pct"] >= 85 and ip_val > 5.0:
                     es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
@@ -616,7 +623,7 @@ def get_strikeout_hunters(fecha_hoy):
                 "⚔️ Rival": r["⚔️ Rival"],
                 "⏱️ Proy. IP": r["⏱️ Proy. IP"],
                 "🔥 K/9 (L7)": f"{k9_val:.1f}",  
-                "🔮 Proy. K": r["k_proyectados"], 
+                "🔮 Proy. K": r["k_proyectados"],
                 "🎯 Jugada": r["tipo_jugada"],
                 "📉 Probabilidad": f"{r['prob_pct']}%",
                 "📝 Evaluación": r["📝 Evaluación"]
@@ -1346,18 +1353,16 @@ if st.session_state.df_mlb is not None:
 
         st.markdown("---")
 
-        st.markdown("#### 🔥 Caza-Ponches (Línea Fija O/U 5.5)")
-        st.markdown("Opera evaluando estrictamente a lanzadores dentro de una ventana de volumen con un piso mínimo de 3.0 innings proyectados.")
+        st.markdown("#### 🔥 Caza-Ponches (Línea Dinámica 4.5 / 5.5)")
+        st.markdown("El radar escanea el perfil del lanzador y le asigna una línea de apuestas personalizada: 4.5 si es un lanzador de contacto (K/9 <= 6.0) o 5.5 si es un ponchador activo (K/9 > 6.0).")
         
-        st.markdown("**⭐ Para el UNDER 5.5 (La Correa Corta):**")
-        st.markdown("* **📉 Probabilidad Extrema (>=75%):** Proyección abrumadora del modelo de Poisson para el promedio de la liga.")
-        st.markdown("* **⏱️ Límite de Volumen (IP <= 5.0):** Garantiza que el lanzador no avance más allá del quinto inning.")
-        st.markdown("* **🧊 Pitcher de Contacto (K/9 <= 6.5):** Promedia muchos menos ponches (0.72 Ks/Inning) del promedio de la liga.")
+        st.markdown("**⭐ Para el UNDER (La Correa Corta):**")
+        st.markdown("* **📉 Probabilidad Extrema (>=85%):** Proyección aplastante de Poisson favoreciendo las bajas.")
+        st.markdown("* **⏱️ Límite de Volumen (IP <= 5.0):** Garantiza que el lanzador no avanzará más allá del quinto inning.")
         
-        st.markdown("**⭐ Para el OVER 5.5 (El As Ponchador):**")
-        st.markdown("* **📈 Probabilidad Clara (>=60%):** Ventaja estadística sólida contra un equipo que se poncha mucho.")
-        st.markdown("* **⏱️ Volumen de Élite (IP > 5.0):** Aseguramos que lanzará el sexto inning (16+ outs), enfrentando más bateadores.")
-        st.markdown("* **🔥 Perfil Abanicador (K/9 >= 9.0):** Garantiza al menos 1 ponche por cada inning completado.")
+        st.markdown("**⭐ Para el OVER (El As Ponchador):**")
+        st.markdown("* **📈 Probabilidad Extrema (>=85%):** El modelo detecta una vulnerabilidad inmensa en el equipo rival (+EV puro).")
+        st.markdown("* **⏱️ Volumen de Élite (IP > 5.0):** Aseguramos que el mánager lo dejará lanzar el sexto inning, maximizando oportunidades de ponche.")
 
         st.markdown("---")
 
