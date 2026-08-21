@@ -872,7 +872,7 @@ if st.session_state.df_mlb is not None:
     
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📅 Cartelera del Día",
-    "❄️ Caza-Bajas",
+    "🔥 Caza-Ponches",
     "🔹 Caza-Hits",
     "🧮 Calculadora +EV",
     "📊 Auditoría Semanal",
