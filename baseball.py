@@ -598,11 +598,14 @@ def get_strikeout_hunters(fecha_hoy):
             
             es_alta_seg = False
             
+            # 🌟 FILTRO SIMÉTRICO CALIBRADO PARA LA REALIDAD DE MLB
             if r["tipo_jugada"] == "Under 5.5":
-                if r["prob_pct"] >= 75 and ip_val <= 4.0 and k9_val <= 6.5:
+                # Under: Exigimos que no pase del 5to inning completo
+                if r["prob_pct"] >= 75 and ip_val <= 5.0 and k9_val <= 6.5:
                     es_alta_seg = True
             else: # Over 5.5
-                if r["prob_pct"] >= 60 and ip_val >= 4.1 and k9_val >= 9.0:
+                # Over: Exigimos que lance MÁS del 5to inning (5.1 en adelante)
+                if r["prob_pct"] >= 60 and ip_val > 5.0 and k9_val >= 9.0:
                     es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
@@ -612,8 +615,8 @@ def get_strikeout_hunters(fecha_hoy):
                 "👕 Equipo": r["👕 Equipo"],
                 "⚔️ Rival": r["⚔️ Rival"],
                 "⏱️ Proy. IP": r["⏱️ Proy. IP"],
-                "🔥 K/9 (L7)": f"{k9_val:.1f}",
-                "🔮 Proy. K": r["k_proyectados"],
+                "🔥 K/9 (L7)": f"{k9_val:.1f}",  
+                "🔮 Proy. K": r["k_proyectados"], 
                 "🎯 Jugada": r["tipo_jugada"],
                 "📉 Probabilidad": f"{r['prob_pct']}%",
                 "📝 Evaluación": r["📝 Evaluación"]
@@ -1348,12 +1351,12 @@ if st.session_state.df_mlb is not None:
         
         st.markdown("**⭐ Para el UNDER 5.5 (La Correa Corta):**")
         st.markdown("* **📉 Probabilidad Extrema (>=75%):** Proyección abrumadora del modelo de Poisson para el promedio de la liga.")
-        st.markdown("* **⏱️ Volumen Corto (IP <= 4.0):** El límite proyectado garantiza que no enfrente demasiados bateadores.")
+        st.markdown("* **⏱️ Límite de Volumen (IP <= 5.0):** Garantiza que el lanzador no avance más allá del quinto inning.")
         st.markdown("* **🧊 Pitcher de Contacto (K/9 <= 6.5):** Promedia muchos menos ponches (0.72 Ks/Inning) del promedio de la liga.")
         
         st.markdown("**⭐ Para el OVER 5.5 (El As Ponchador):**")
         st.markdown("* **📈 Probabilidad Clara (>=60%):** Ventaja estadística sólida contra un equipo que se poncha mucho.")
-        st.markdown("* **⏱️ Volumen Firme (IP >= 4.1):** Aseguramos que lanzará lo suficiente (13+ outs) para acercarse a la línea matemática.")
+        st.markdown("* **⏱️ Volumen de Élite (IP > 5.0):** Aseguramos que lanzará el sexto inning (16+ outs), enfrentando más bateadores.")
         st.markdown("* **🔥 Perfil Abanicador (K/9 >= 9.0):** Garantiza al menos 1 ponche por cada inning completado.")
 
         st.markdown("---")
