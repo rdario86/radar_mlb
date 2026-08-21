@@ -551,9 +551,6 @@ def get_strikeout_hunters(fecha_hoy):
                 factor_rival = blended_k_pct / 0.225
                 factor_rival = max(0.80, min(1.20, factor_rival))
 
-                avg_ip = (l7_outs / 3.0) / juegos_lanzados
-                factor_ip = min(1.0, avg_ip / 6.0)
-                
                 avg_outs_redondeado = int(round(l7_outs / juegos_lanzados))
                 innings_enteros = avg_outs_redondeado // 3
                 outs_sobrantes = avg_outs_redondeado % 3
@@ -566,7 +563,8 @@ def get_strikeout_hunters(fecha_hoy):
                 
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
 
-                proj_k = (median_k * factor_rival * factor_ip)
+                # ELIMINAMOS EL factor_ip para no penalizar doblemente el volumen
+                proj_k = (median_k * factor_rival)
                 
                 # CÁLCULO DE PROBABILIDADES O/U 4.5
                 prob_under = poisson.cdf(4, proj_k) if proj_k > 0 else 1.0
@@ -616,12 +614,12 @@ def get_strikeout_hunters(fecha_hoy):
             
             es_alta_seg = False
             
-            # 🌟 FILTRO SIMÉTRICO DE ESTRELLAS PREMIUM PARA O/U 4.5
+            # 🌟 FILTRO SIMÉTRICO CALIBRADO PARA LA REALIDAD DE MLB
             if r["tipo_jugada"] == "Under 4.5":
-                if r["prob_pct"] >= 85 and ip_val <= 4.0 and k9_val <= 6.0:
+                if r["prob_pct"] >= 75 and ip_val <= 4.0 and k9_val <= 6.5:
                     es_alta_seg = True
             else: # Over 4.5
-                if r["prob_pct"] >= 75 and ip_val >= 4.1 and k9_val >= 9.0:
+                if r["prob_pct"] >= 60 and ip_val >= 4.1 and k9_val >= 9.0:
                     es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
