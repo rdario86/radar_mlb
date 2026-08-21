@@ -436,7 +436,6 @@ def get_strikeout_hunters(fecha_hoy):
             g_status = juego.get('status', '')
             p_local, p_visita = get_starting_pitchers(juego)
             
-            # 1. AGREGAMOS EL ID DEL EQUIPO AL MATCHUP PARA EL FILTRO ANTI-CLONES
             matchups = [
                 (p_local, juego.get('home_id'), juego.get('home_name'), juego.get('away_id'), juego.get('away_name')),
                 (p_visita, juego.get('away_id'), juego.get('away_name'), juego.get('home_id'), juego.get('home_name'))
@@ -447,28 +446,21 @@ def get_strikeout_hunters(fecha_hoy):
                 players = statsapi.lookup_player(p_name)
                 if not players: continue
                 
-                # -------------------------------------------------------------
-                # 2. FILTRO ANTI-HOMÓNIMOS
                 p_id = None
                 raw_data = None
                 
                 for pl in players:
                     temp_id = pl['id']
-                    # Extraemos el equipo actual del jugador
                     temp_data = statsapi.get('people', {'personIds': temp_id, 'hydrate': 'currentTeam,stats(group=[pitching],type=[gameLog])'})
                     person_info = temp_data.get('people', [{}])[0]
-                    
-                    # Verificamos si pertenece al equipo que juega hoy
                     if person_info.get('currentTeam', {}).get('id') == team_id:
                         p_id = temp_id
                         raw_data = temp_data
                         break
                         
-                # Si no lo encontró, usa el primero por defecto
                 if not p_id or not raw_data:
                     p_id = players[0]['id']
                     raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'currentTeam,stats(group=[pitching],type=[gameLog])'})
-                # -------------------------------------------------------------
                 
                 stats_blocks = raw_data.get('people', [{}])[0].get('stats', [])
                 
@@ -490,7 +482,7 @@ def get_strikeout_hunters(fecha_hoy):
                     g_stats = game.get('stat', {})
                     k = int(g_stats.get('strikeOuts', 0))
                     l7_ks += k
-                    ks_list.append(k) # Imprescindible para calcular la mediana
+                    ks_list.append(k) 
                     ip_str = str(g_stats.get('inningsPitched', '0.0'))
                     if '.' in ip_str:
                         full, frac = ip_str.split('.')
@@ -567,58 +559,70 @@ def get_strikeout_hunters(fecha_hoy):
                 outs_sobrantes = avg_outs_redondeado % 3
                 
                 # -------------------------------------------------------------
-                # NUEVO FILTRO DE VOLUMEN: Entre 3.0 y 5.0 innings obligatorios
+                # FILTRO DE VOLUMEN: >= 3.0 y < 6.0 innings obligatorios
                 # -------------------------------------------------------------
-                if innings_enteros < 3 or innings_enteros > 5:
-                    continue
-                # Si proyecta exactamente 5 innings, no puede tener outs sobrantes (ej. 5.1 o 5.2 se descartan)
-                if innings_enteros == 5 and outs_sobrantes > 0:
+                if innings_enteros < 3 or innings_enteros >= 6:
                     continue
                 
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
 
-
                 proj_k = (median_k * factor_rival * factor_ip)
-                proj_k_redondeada = int(round(proj_k))
                 
-                meta_ks_max = 4 
-                prob_under = poisson.cdf(meta_ks_max, proj_k) if proj_k > 0 else 1.0
-                prob_under_pct = int(round(prob_under * 100))
+                # CÁLCULO DE PROBABILIDADES O/U 4.5
+                prob_under = poisson.cdf(4, proj_k) if proj_k > 0 else 1.0
+                prob_over = 1 - prob_under
+                
+                if prob_under >= prob_over:
+                    tipo_jugada = "Under 4.5"
+                    prob_pct = int(round(prob_under * 100))
+                    prob_exacta = prob_under
+                else:
+                    tipo_jugada = "Over 4.5"
+                    prob_pct = int(round(prob_over * 100))
+                    prob_exacta = prob_over
 
-                k9 = int(round((l7_ks / (l7_outs / 3.0)) * 9.0))
+                k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1)
 
                 eval_str = "⏳ Pendiente"
                 if g_status in ['Final', 'Game Over']:
                     if outs_hoy_real == 0:
                         eval_str = "🚫 No lanzó"
                     else:
-                        eval_str = f"✅ Acierto (Under: {ks_hoy_real} Ks)" if ks_hoy_real <= meta_ks_max else f"❌ Fallo (Over: {ks_hoy_real} Ks)"
+                        if tipo_jugada == "Under 4.5":
+                            eval_str = f"✅ Acierto (Under: {ks_hoy_real} Ks)" if ks_hoy_real <= 4 else f"❌ Fallo (Over: {ks_hoy_real} Ks)"
+                        else:
+                            eval_str = f"✅ Acierto (Over: {ks_hoy_real} Ks)" if ks_hoy_real >= 5 else f"❌ Fallo (Under: {ks_hoy_real} Ks)"
 
                 pitchers_data.append({
                     "⚾ Abridor": p_name,
                     "👕 Equipo": p_team,
                     "⚔️ Rival": opp_name,
                     "⏱️ Proy. IP": ip_pantalla,
-                    "❄️ K/9 (L7)": k9,
-                    "🎯 Proy. Ponches": proj_k_redondeada,
-                    "score": proj_k, 
-                    "prob_under_pct": prob_under_pct,
-                    "prob_under_exacta": prob_under,
+                    "🔥 K/9 (L7)": k9,
+                    "tipo_jugada": tipo_jugada,
+                    "prob_pct": prob_pct,
+                    "prob_exacta": prob_exacta,
                     "📝 Evaluación": eval_str
                 })
 
         # Ordenamos estrictamente por la probabilidad decimal exacta, de mayor a menor
-        pitchers_data.sort(key=lambda x: x['prob_under_exacta'], reverse=True)
+        pitchers_data.sort(key=lambda x: x['prob_exacta'], reverse=True)
         top_4 = pitchers_data[:4]
 
         nuevo_top4 = []
         for r in top_4:
-            # 🌟 FILTRO DE ALTA SEGURIDAD (BAJAS) 🌟
             ip_val = float(r["⏱️ Proy. IP"])
+            k9_val = float(r["❄️ K/9 (L7)"])
             
             es_alta_seg = False
-            if r["prob_under_pct"] >= 85 and ip_val <= 4.0 and r["❄️ K/9 (L7)"] <= 6:
-                es_alta_seg = True
+            
+            # 🌟 FILTRO SIMÉTRICO DE ESTRELLAS PREMIUM PARA O/U 4.5
+            if r["tipo_jugada"] == "Under 4.5":
+                if r["prob_pct"] >= 85 and ip_val <= 4.0 and k9_val <= 6.0:
+                    es_alta_seg = True
+            else: # Over 4.5
+                if r["prob_pct"] >= 75 and ip_val >= 4.1 and k9_val >= 9.0:
+                    es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
 
@@ -627,8 +631,9 @@ def get_strikeout_hunters(fecha_hoy):
                 "👕 Equipo": r["👕 Equipo"],
                 "⚔️ Rival": r["⚔️ Rival"],
                 "⏱️ Proy. IP": r["⏱️ Proy. IP"],
-                "❄️ K/9 (L7)": r["❄️ K/9 (L7)"],  # <--- AQUÍ REGRESAMOS LA COLUMNA A LA PANTALLA
-                "📉 Prob. Under 4.5": f"{r['prob_under_pct']}%",
+                "🔥 K/9 (L7)": r["🔥 K/9 (L7)"],  
+                "🎯 Jugada": r["tipo_jugada"],
+                "📉 Probabilidad": f"{r['prob_pct']}%",
                 "📝 Evaluación": r["📝 Evaluación"]
             })
         return nuevo_top4
@@ -1067,10 +1072,10 @@ if st.session_state.df_mlb is not None:
         else:
             st.info("Presiona el botón 'Analizar y Evaluar Cartelera' para generar las predicciones del día.")
 
-    with tab2:
-        st.markdown("### ❄️ Radar de Bajas: Pitcher K/9 vs Vulnerabilidad del Rival")
-        if st.button("🎯 Cazar Bajas del Día (Top 4)", type="primary", use_container_width=True):
-            with st.spinner("Haciendo el cruce de vulnerabilidad y auditando ponches finales..."):
+   with tab2:
+        st.markdown("### ⚡ Radar de Ponches: Proyecciones Over/Under 4.5")
+        if st.button("🎯 Cazar Ponches del Día (Top 4)", type="primary", use_container_width=True):
+            with st.spinner("Calculando vulnerabilidades y distribuciones de Poisson..."):
                 resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
                 if resultados_k:
                     st.session_state[f"resultados_k_{st.session_state.fecha_hoy}"] = resultados_k
@@ -1086,7 +1091,7 @@ if st.session_state.df_mlb is not None:
 
             excel_ponches = convertir_df_a_excel(df_k, "Ponches")
             st.download_button(
-                label="📥 Descargar Caza-Bajas (Excel)",
+                label="📥 Descargar Caza-Ponches (Excel)",
                 data=excel_ponches,
                 file_name=f"caza_ponches_{st.session_state.fecha_hoy}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1097,13 +1102,11 @@ if st.session_state.df_mlb is not None:
 
             if total_evaluados > 0:
                 efectividad = (aciertos / total_evaluados) * 100
-                st.markdown("### 📊 Rendimiento Caza-Bajas")
+                st.markdown("### 📊 Rendimiento Caza-Ponches")
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Lanzadores Evaluados", total_evaluados)
-                c2.metric("Metas Superadas", aciertos)
+                c2.metric("Aciertos (Over/Under)", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
-        elif clave_k not in st.session_state:
-            st.info("Presiona el botón para cazar bajas del día.")
                 
     with tab3:
         st.markdown("### 🔹 Radar de Hits: Probabilidad de 1+ Imparables")
@@ -1401,11 +1404,18 @@ if st.session_state.df_mlb is not None:
 
         st.markdown("---")
 
-        st.markdown("#### ❄️ Caza-Bajas (Under 4.5 Ponches)")
-        st.markdown("Para que la Baja de un lanzador sea considerada una jugada maestra, debe cumplir estas 3 reglas inquebrantables simultáneamente:")
-        st.markdown("* **📈 Probabilidad Extrema (>=85%):** La fórmula de Poisson debe proyectar al menos un 85% de posibilidades reales de que el lanzador logre 4 ponches o menos.")
-        st.markdown("* **⏱️ Correa Corta (Proy. IP <= 4.0):** El mánager no debe dejarlo pasar del quinto inning. Matemáticamente, a menos outs lanzados, menos oportunidades de sumar ponches fortuitos.")
-        st.markdown("* **🧊 Lanzador de Contacto (K/9 <= 6):** El lanzador debe tener una tendencia natural a inducir batazos de out en el cuadro en lugar de abanicar bateadores (Promedio de 6 ponches o menos cada 9 innings).")
+        st.markdown("#### 🔥 Caza-Ponches (Línea Fija O/U 4.5)")
+        st.markdown("Opera evaluando estrictamente a lanzadores dentro de una ventana de volumen (entre 3.0 y menos de 6.0 innings proyectados).")
+        
+        st.markdown("**⭐ Para el UNDER 4.5 (La Correa Corta):**")
+        st.markdown("* **📉 Probabilidad Extrema (>=85%):** Proyección abrumadora del modelo de Poisson.")
+        st.markdown("* **⏱️ Volumen Corto (IP <= 4.0):** El límite proyectado garantiza que no enfrente demasiados bateadores.")
+        st.markdown("* **🧊 Pitcher de Contacto (K/9 <= 6.0):** Promedia muchos menos ponches (0.66 Ks/Inning) del promedio de la liga.")
+        
+        st.markdown("**⭐ Para el OVER 4.5 (El Ponchador Ineficiente):**")
+        st.markdown("* **📈 Probabilidad Clara (>=75%):** Amplia ventaja estadística contra un equipo que se poncha mucho.")
+        st.markdown("* **⏱️ Volumen Firme (IP >= 4.1):** Aseguramos que lanzará lo suficiente (13+ outs) para acercarse a la línea matemática.")
+        st.markdown("* **🔥 Perfil Abanicador (K/9 >= 9.0):** Garantiza al menos 1 ponche por cada inning completado.")
 
         st.markdown("---")
 
