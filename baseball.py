@@ -559,9 +559,9 @@ def get_strikeout_hunters(fecha_hoy):
                 outs_sobrantes = avg_outs_redondeado % 3
                 
                 # -------------------------------------------------------------
-                # FILTRO DE VOLUMEN: >= 3.0 y < 6.0 innings obligatorios
+                # FILTRO DE VOLUMEN: >= 3.0 y <= 6.0 innings obligatorios (De 9 a 18 outs)
                 # -------------------------------------------------------------
-                if innings_enteros < 3 or innings_enteros >= 6:
+                if avg_outs_redondeado < 9 or avg_outs_redondeado > 18:
                     continue
                 
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
