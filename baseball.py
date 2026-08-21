@@ -581,6 +581,7 @@ def get_strikeout_hunters(fecha_hoy):
                     "⚔️ Rival": opp_name,
                     "⏱️ Proy. IP": ip_pantalla,
                     "🔥 K/9 (L7)": k9,
+                    "k_proyectados": int(round(proj_k)),
                     "tipo_jugada": tipo_jugada,
                     "prob_pct": prob_pct,
                     "prob_exacta": prob_exacta,
@@ -611,7 +612,7 @@ def get_strikeout_hunters(fecha_hoy):
                 "👕 Equipo": r["👕 Equipo"],
                 "⚔️ Rival": r["⚔️ Rival"],
                 "⏱️ Proy. IP": r["⏱️ Proy. IP"],
-                "🔥 K/9 (L7)": f"{k9_val:.1f}",  
+                "🔥 K/9 (L7)": f"{k9_val:.1f}",
                 "🎯 Jugada": r["tipo_jugada"],
                 "📉 Probabilidad": f"{r['prob_pct']}%",
                 "📝 Evaluación": r["📝 Evaluación"]
