@@ -544,6 +544,12 @@ def get_strikeout_hunters(fecha_hoy):
                 k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1)
                 
                 # -------------------------------------------------------------
+                # NUEVO FILTRO ANTIMINAS: Descartamos inflaciones de casino
+                # -------------------------------------------------------------
+                if k9 >= 11.0:
+                    continue
+                
+                # -------------------------------------------------------------
                 # JUGADA FORZADA: UNDER 4.5 vs OVER 6.5
                 # -------------------------------------------------------------
                 if k9 < 9.0: 
@@ -551,9 +557,7 @@ def get_strikeout_hunters(fecha_hoy):
                     prob_exacta = poisson.cdf(4, proj_k) if proj_k > 0 else 1.0
                     limite_eval = 4
                 else: 
-                    tipo_jugada = "Over 6.5" # <--- AJUSTE A OVER 6.5
-                    # CDF de 6 calcula la prob. de hacer 0,1,2,3,4,5 o 6 ponches. 
-                    # 1 - CDF(6) nos da la prob. de hacer 7 o más (Over 6.5)
+                    tipo_jugada = "Over 6.5" 
                     prob_exacta = 1 - poisson.cdf(6, proj_k) if proj_k > 0 else 0.0
                     limite_eval = 6 
 
