@@ -556,26 +556,37 @@ def get_strikeout_hunters(fecha_hoy):
                 outs_sobrantes = avg_outs_redondeado % 3
                 
                 # -------------------------------------------------------------
-                # FILTRO DE VOLUMEN: >= 3.0 y <= 6.0 innings obligatorios (De 9 a 18 outs)
+                # 1. NUEVO FILTRO DE VOLUMEN: Solo piso (>= 3.0 IP). ¡Sin techo!
                 # -------------------------------------------------------------
-                if avg_outs_redondeado < 9 or avg_outs_redondeado > 18:
+                if avg_outs_redondeado < 9:
                     continue
                 
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
 
-                # ELIMINAMOS EL factor_ip para no penalizar doblemente el volumen
-                proj_k = (median_k * factor_rival)
+                # -------------------------------------------------------------
+                # 2. PROMEDIO PONDERADO POR VOLUMEN (En lugar de Mediana)
+                # Calculamos su tasa real de Ks por out y la proyectamos a su volumen
+                # -------------------------------------------------------------
+                k_per_out = l7_ks / l7_outs if l7_outs > 0 else 0
+                promedio_k_ponderado = k_per_out * avg_outs_redondeado
+
+                # Aplicamos la vulnerabilidad del rival
+                proj_k = (promedio_k_ponderado * factor_rival)
                 
-                # CÁLCULO DE PROBABILIDADES O/U 4.5
-                prob_under = poisson.cdf(4, proj_k) if proj_k > 0 else 1.0
+                # -------------------------------------------------------------
+                # 3. NUEVA LÍNEA FIJA: 5.5 PONCHES
+                # Under 5.5 = 5 ponches o menos (poisson.cdf de 5)
+                # Over 5.5 = 6 ponches o más
+                # -------------------------------------------------------------
+                prob_under = poisson.cdf(5, proj_k) if proj_k > 0 else 1.0
                 prob_over = 1 - prob_under
                 
                 if prob_under >= prob_over:
-                    tipo_jugada = "Under 4.5"
+                    tipo_jugada = "Under 5.5"
                     prob_pct = int(round(prob_under * 100))
                     prob_exacta = prob_under
                 else:
-                    tipo_jugada = "Over 4.5"
+                    tipo_jugada = "Over 5.5"
                     prob_pct = int(round(prob_over * 100))
                     prob_exacta = prob_over
 
@@ -586,10 +597,10 @@ def get_strikeout_hunters(fecha_hoy):
                     if outs_hoy_real == 0:
                         eval_str = "🚫 No lanzó"
                     else:
-                        if tipo_jugada == "Under 4.5":
-                            eval_str = f"✅ Acierto (Under: {ks_hoy_real} Ks)" if ks_hoy_real <= 4 else f"❌ Fallo (Over: {ks_hoy_real} Ks)"
+                        if tipo_jugada == "Under 5.5":
+                            eval_str = f"✅ Acierto (Under: {ks_hoy_real} Ks)" if ks_hoy_real <= 5 else f"❌ Fallo (Over: {ks_hoy_real} Ks)"
                         else:
-                            eval_str = f"✅ Acierto (Over: {ks_hoy_real} Ks)" if ks_hoy_real >= 5 else f"❌ Fallo (Under: {ks_hoy_real} Ks)"
+                            eval_str = f"✅ Acierto (Over: {ks_hoy_real} Ks)" if ks_hoy_real >= 6 else f"❌ Fallo (Under: {ks_hoy_real} Ks)"
 
                 pitchers_data.append({
                     "⚾ Abridor": p_name,
