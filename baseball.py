@@ -531,11 +531,13 @@ def get_strikeout_hunters(fecha_hoy):
                 innings_enteros = avg_outs_redondeado // 3
                 outs_sobrantes = avg_outs_redondeado % 3
                 
+                # FILTRO DE VOLUMEN: Solo piso (>= 3.0 IP). ¡Sin techo!
                 if avg_outs_redondeado < 9:
                     continue
                 
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
 
+                # PROMEDIO PONDERADO POR VOLUMEN 
                 k_per_out = l7_ks / l7_outs if l7_outs > 0 else 0
                 promedio_k_ponderado = k_per_out * avg_outs_redondeado
 
@@ -543,23 +545,39 @@ def get_strikeout_hunters(fecha_hoy):
                 
                 k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1)
                 
-                # -------------------------------------------------------------
-                # NUEVO FILTRO ANTIMINAS: Descartamos inflaciones de casino
-                # -------------------------------------------------------------
+                # FILTRO ANTIMINAS: Descartamos inflaciones
                 if k9 >= 11.0:
                     continue
                 
                 # -------------------------------------------------------------
-                # JUGADA FORZADA: UNDER 4.5 vs OVER 6.5
+                # NUEVA LÍNEA DINÁMICA MULTI-ESCALÓN (Basada en Proyección)
                 # -------------------------------------------------------------
-                if k9 < 9.0: 
-                    tipo_jugada = "Under 4.5"
-                    prob_exacta = poisson.cdf(4, proj_k) if proj_k > 0 else 1.0
-                    limite_eval = 4
-                else: 
-                    tipo_jugada = "Over 6.5" 
-                    prob_exacta = 1 - poisson.cdf(6, proj_k) if proj_k > 0 else 0.0
-                    limite_eval = 6 
+                k_proy_int = int(round(proj_k))
+                
+                if k_proy_int <= 2:
+                    tipo_jugada = "Under 2.5"; limite_eval = 2
+                    prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
+                elif k_proy_int == 3:
+                    tipo_jugada = "Under 3.5"; limite_eval = 3
+                    prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
+                elif k_proy_int == 4:
+                    tipo_jugada = "Under 4.5"; limite_eval = 4
+                    prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
+                elif k_proy_int == 5:
+                    tipo_jugada = "Under 5.5"; limite_eval = 5
+                    prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
+                elif k_proy_int == 6:
+                    tipo_jugada = "Over 5.5"; limite_eval = 5
+                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
+                elif k_proy_int == 7:
+                    tipo_jugada = "Over 6.5"; limite_eval = 6
+                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
+                elif k_proy_int == 8:
+                    tipo_jugada = "Over 7.5"; limite_eval = 7
+                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
+                else: # 9 o más
+                    tipo_jugada = "Over 8.5"; limite_eval = 8
+                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
 
                 prob_pct = int(round(prob_exacta * 100))
 
@@ -568,7 +586,7 @@ def get_strikeout_hunters(fecha_hoy):
                     if outs_hoy_real == 0:
                         eval_str = "🚫 No lanzó"
                     else:
-                        if tipo_jugada == "Under 4.5":
+                        if "Under" in tipo_jugada:
                             eval_str = f"✅ Acierto (Under: {ks_hoy_real} Ks)" if ks_hoy_real <= limite_eval else f"❌ Fallo (Over: {ks_hoy_real} Ks)"
                         else:
                             eval_str = f"✅ Acierto (Over: {ks_hoy_real} Ks)" if ks_hoy_real > limite_eval else f"❌ Fallo (Under: {ks_hoy_real} Ks)"
@@ -579,7 +597,7 @@ def get_strikeout_hunters(fecha_hoy):
                     "⚔️ Rival": opp_name,
                     "⏱️ Proy. IP": ip_pantalla,
                     "🔥 K/9 (L7)": k9,
-                    "k_proyectados": int(round(proj_k)), 
+                    "k_proyectados": k_proy_int, 
                     "tipo_jugada": tipo_jugada,
                     "prob_pct": prob_pct,
                     "prob_exacta": prob_exacta,
@@ -596,11 +614,12 @@ def get_strikeout_hunters(fecha_hoy):
             
             es_alta_seg = False
             
-            if r["tipo_jugada"] == "Under 4.5":
-                if r["prob_pct"] >= 85 and ip_val <= 5.0:
+            # 🌟 FILTRO DINÁMICO DE ESTRELLA: Probabilidad exigente (>= 65%) + Blindaje de Innings
+            if "Under" in r["tipo_jugada"]:
+                if r["prob_pct"] >= 65 and ip_val <= 5.0:
                     es_alta_seg = True
-            else: # Over 6.5
-                if r["prob_pct"] >= 85 and ip_val > 5.0:
+            else: # Over
+                if r["prob_pct"] >= 65 and ip_val > 5.0:
                     es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
@@ -1016,9 +1035,9 @@ if st.session_state.df_mlb is not None:
             st.info("Presiona el botón 'Analizar y Evaluar Cartelera' para generar las predicciones del día.")
 
     with tab2:
-        st.markdown("### ⚡ Radar de Ponches: Proyecciones Línea Dinámica 4.5 / 6.5")
+        st.markdown("### ⚡ Radar de Ponches: Líneas Alternativas Personalizadas")
         if st.button("🎯 Cazar Ponches del Día (Top 4)", type="primary", use_container_width=True):
-            with st.spinner("Calculando vulnerabilidades y distribuciones de Poisson..."):
+            with st.spinner("Calculando vulnerabilidades y distribuciones de Poisson multi-escalón..."):
                 resultados_k = get_strikeout_hunters(st.session_state.fecha_hoy)
                 if resultados_k:
                     st.session_state[f"resultados_k_{st.session_state.fecha_hoy}"] = resultados_k
@@ -1131,7 +1150,7 @@ if st.session_state.df_mlb is not None:
 
     with tab5:
         st.markdown("### 📊 Auditoría Premium (Últimos 7 Días previos a la fecha elegida)")
-        st.markdown("Evalúa estrictamente la rentabilidad de las jugadas de Alta Seguridad (⭐). Al excluir el escaneo masivo de hits, esta auditoría carga mucho más rápido.")
+        st.markdown("Evalúa estrictamente la rentabilidad de las jugadas de Alta Seguridad (⭐). El radar de ponches ahora se audita sobre sus líneas alternativas dinámicas, adaptadas a cada lanzador.")
 
         if st.button("🔍 Ejecutar Auditoría Premium", type="primary", use_container_width=True):
             # Conectamos la auditoría al "Motor de Tiempo" del sidebar
@@ -1344,16 +1363,16 @@ if st.session_state.df_mlb is not None:
 
         st.markdown("---")
 
-        st.markdown("#### 🔥 Caza-Ponches (Línea Dinámica 4.5 / 6.5)")
-        st.markdown("El radar escanea el perfil del lanzador y le asigna una línea de apuestas personalizada: 4.5 si es un lanzador promedio o de contacto (K/9 < 9.0) o 6.5 si es un verdadero As abanicador (K/9 >= 9.0).")
+        st.markdown("#### 🔥 Caza-Ponches (Líneas Alternativas Multi-Escalón)")
+        st.markdown("El radar escanea la proyección matemática exacta del lanzador y asigna una línea de apuestas hecha a la medida, desde Under 2.5 hasta Over 8.5. Se descartan automáticamente lanzadores con K/9 >= 11.0 para evitar 'espejismos' o inflaciones de casino.")
         
-        st.markdown("**⭐ Para el UNDER 4.5 (La Correa Corta):**")
-        st.markdown("* **📉 Probabilidad Extrema (>=85%):** Proyección aplastante de Poisson favoreciendo las bajas.")
-        st.markdown("* **⏱️ Límite de Volumen (IP <= 5.0):** Garantiza que el lanzador no avanzará más allá del quinto inning.")
+        st.markdown("**⭐ Para las jugadas UNDER:**")
+        st.markdown("* **📉 Probabilidad Sólida (>=65%):** El modelo detecta valor en la cuota al proyectar un bajo rendimiento.")
+        st.markdown("* **⏱️ Límite de Volumen (IP <= 5.0):** Garantiza que el lanzador no avanzará más allá del quinto inning, limitando su exposición.")
         
-        st.markdown("**⭐ Para el OVER 6.5 (El As Ponchador):**")
-        st.markdown("* **📈 Probabilidad Extrema (>=85%):** Exige proyectar con absoluta seguridad 7 o más ponches (+EV puro con altas cuotas de casino).")
-        st.markdown("* **⏱️ Volumen de Élite (IP > 5.0):** Aseguramos que el mánager lo dejará lanzar el sexto inning, maximizando oportunidades de ponche.")
+        st.markdown("**⭐ Para las jugadas OVER:**")
+        st.markdown("* **📈 Probabilidad Sólida (>=65%):** Asegura una ventaja clara incluso sobre la línea ajustada.")
+        st.markdown("* **⏱️ Volumen de Élite (IP > 5.0):** Aseguramos que el mánager lo dejará lanzar profundo, maximizando sus oportunidades de abanicar.")
 
         st.markdown("---")
 
