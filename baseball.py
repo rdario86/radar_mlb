@@ -545,38 +545,41 @@ def get_strikeout_hunters(fecha_hoy):
                 
                 k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1)
                 
-                # FILTRO ANTIMINAS: Descartamos inflaciones
+                # FILTRO ANTIMINAS: Descartamos inflaciones de casino
                 if k9 >= 11.0:
                     continue
                 
                 # -------------------------------------------------------------
-                # NUEVA LÍNEA DINÁMICA MULTI-ESCALÓN (Basada en Proyección)
+                # NUEVA LÍNEA DINÁMICA: MARGEN DE SEGURIDAD (+1.5 Ks a favor)
                 # -------------------------------------------------------------
                 k_proy_int = int(round(proj_k))
                 
-                if k_proy_int <= 2:
+                if k_proy_int <= 1:
                     tipo_jugada = "Under 2.5"; limite_eval = 2
                     prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
-                elif k_proy_int == 3:
+                elif k_proy_int == 2:
                     tipo_jugada = "Under 3.5"; limite_eval = 3
                     prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
-                elif k_proy_int == 4:
+                elif k_proy_int == 3:
                     tipo_jugada = "Under 4.5"; limite_eval = 4
                     prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
-                elif k_proy_int == 5:
+                elif k_proy_int == 4:
                     tipo_jugada = "Under 5.5"; limite_eval = 5
                     prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
+                elif k_proy_int == 5:
+                    tipo_jugada = "Under 6.5"; limite_eval = 6
+                    prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
                 elif k_proy_int == 6:
-                    tipo_jugada = "Over 5.5"; limite_eval = 5
+                    tipo_jugada = "Over 4.5"; limite_eval = 4
                     prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
                 elif k_proy_int == 7:
-                    tipo_jugada = "Over 6.5"; limite_eval = 6
+                    tipo_jugada = "Over 5.5"; limite_eval = 5
                     prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
                 elif k_proy_int == 8:
-                    tipo_jugada = "Over 7.5"; limite_eval = 7
+                    tipo_jugada = "Over 6.5"; limite_eval = 6
                     prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
                 else: # 9 o más
-                    tipo_jugada = "Over 8.5"; limite_eval = 8
+                    tipo_jugada = "Over 7.5"; limite_eval = 7
                     prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
 
                 prob_pct = int(round(prob_exacta * 100))
@@ -614,12 +617,12 @@ def get_strikeout_hunters(fecha_hoy):
             
             es_alta_seg = False
             
-            # 🌟 FILTRO DINÁMICO DE ESTRELLA: Probabilidad exigente (>= 70%) + Blindaje de Innings
+            # 🌟 FILTRO DINÁMICO DE ESTRELLA: Probabilidad blindada (>= 75%) + Margen IP
             if "Under" in r["tipo_jugada"]:
-                if r["prob_pct"] >= 70 and ip_val <= 5.0:
+                if r["prob_pct"] >= 75 and ip_val <= 5.0:
                     es_alta_seg = True
             else: # Over
-                if r["prob_pct"] >= 70 and ip_val > 5.0:
+                if r["prob_pct"] >= 75 and ip_val > 5.0:
                     es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
