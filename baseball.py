@@ -615,12 +615,12 @@ def get_strikeout_hunters(fecha_hoy):
             
             # 🌟 FILTRO DINÁMICO DE ESTRELLA (ASIMÉTRICO)
             if "Under" in r["tipo_jugada"]:
-                # Under: Exigimos 70% y la Correa Corta (<= 14 outs, es decir, < 5.0 IP)
-                if r["prob_pct"] >= 70 and outs_val <= 14:
+                # Under: Exigimos 70% y la Correa Corta (<= 12 outs, es decir, max 4.0 IP)
+                if r["prob_pct"] >= 70 and outs_val <= 12:
                     es_alta_seg = True
             else: 
-                # Over: Bajamos la guardia al 65% y exigimos volumen de élite (> 5.0 IP)
-                if r["prob_pct"] >= 65 and ip_val > 5.0:
+                # Over: Bajamos la guardia al 60% y exigimos volumen de élite (> 5.0 IP)
+                if r["prob_pct"] >= 60 and ip_val > 5.0:
                     es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
@@ -1385,10 +1385,10 @@ if st.session_state.df_mlb is not None:
         
         st.markdown("**⭐ Para las jugadas UNDER:**")
         st.markdown("* **📉 Probabilidad (>=70%):** Exige precisión de Poisson evaluando la vulnerabilidad real.")
-        st.markdown("* **⏱️ Límite de Volumen Restringido (<= 14 Outs):** Activa la 'correa corta', descartando a cualquier lanzador que promedie culminar el quinto inning o más.")
+        st.markdown("* **⏱️ Límite de Volumen Restringido (<= 12 Outs):** Activa la 'correa corta', descartando a cualquier lanzador que promedie culminar el quinto inning o más (máximo 4.0 IP).")
         
         st.markdown("**⭐ Para las jugadas OVER:**")
-        st.markdown("* **📈 Probabilidad (>=65%):** El radar asume el ajuste estricto de la línea, detectando ventajas sin asfixiar la muestra matemática.")
+        st.markdown("* **📈 Probabilidad (>=60%):** El radar asume el ajuste estricto de la línea, detectando ventajas sin asfixiar la muestra matemática.")
         st.markdown("* **⏱️ Volumen de Élite (IP > 5.0):** Aseguramos que el mánager lo dejará lanzar profundo, garantizando volumen de pitcheos.")
 
         st.markdown("---")
