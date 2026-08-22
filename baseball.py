@@ -613,10 +613,10 @@ def get_strikeout_hunters(fecha_hoy):
             
             es_alta_seg = False
             
-            # 🌟 FILTRO DINÁMICO DE ESTRELLA (ASIMÉTRICO)
+            # 🌟 FILTRO DINÁMICO DE ESTRELLA (ASIMÉTRICO Y CON ESCUDO K/9)
             if "Under" in r["tipo_jugada"]:
-                # Under: Exigimos 70% y la Correa Corta (<= 12 outs, es decir, max 4.0 IP)
-                if r["prob_pct"] >= 70 and outs_val <= 12:
+                # Under: Exigimos 70%, la Correa Corta (<= 12 outs) Y Escudo K/9 (< 9.0)
+                if r["prob_pct"] >= 70 and outs_val <= 12 and k9_val < 9.0:
                     es_alta_seg = True
             else: 
                 # Over: Bajamos la guardia al 60% y exigimos volumen de élite (> 5.0 IP)
@@ -1385,6 +1385,7 @@ if st.session_state.df_mlb is not None:
         
         st.markdown("**⭐ Para las jugadas UNDER:**")
         st.markdown("* **📉 Probabilidad (>=70%):** Exige precisión de Poisson evaluando la vulnerabilidad real.")
+        st.markdown("* **🛡️ Escudo Anti-Lanzallamas (K/9 < 9.0):** Obliga a que el pitcher sea de contacto, evitando relevistas de poder.")
         st.markdown("* **⏱️ Límite de Volumen Restringido (<= 12 Outs):** Activa la 'correa corta', descartando a cualquier lanzador que promedie culminar el quinto inning o más (máximo 4.0 IP).")
         
         st.markdown("**⭐ Para las jugadas OVER:**")
