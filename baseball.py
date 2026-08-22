@@ -620,12 +620,12 @@ def get_strikeout_hunters(fecha_hoy):
             
             es_alta_seg = False
             
-            # 🌟 FILTRO DINÁMICO DE ESTRELLA: Probabilidad blindada (>= 85%) + Margen IP
+            # 🌟 FILTRO DINÁMICO DE ESTRELLA: Probabilidad blindada (>= 65%) + Margen IP
             if "Under" in r["tipo_jugada"]:
-                if r["prob_pct"] >= 85 and ip_val <= 5.0:
+                if r["prob_pct"] >= 65 and ip_val <= 5.0:
                     es_alta_seg = True
             else: # Over
-                if r["prob_pct"] >= 85 and ip_val > 5.0:
+                if r["prob_pct"] >= 65 and ip_val > 5.0:
                     es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
