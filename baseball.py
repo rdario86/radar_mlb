@@ -550,7 +550,7 @@ def get_strikeout_hunters(fecha_hoy):
                     continue
                 
                 # -------------------------------------------------------------
-                # NUEVA LÍNEA DINÁMICA: MARGEN DE SEGURIDAD (+1.5 Ks a favor)
+                # NUEVA LÍNEA DINÁMICA: MARGEN DE SEGURIDAD AJUSTADO
                 # -------------------------------------------------------------
                 k_proy_int = int(round(proj_k))
                 
@@ -567,8 +567,8 @@ def get_strikeout_hunters(fecha_hoy):
                     tipo_jugada = "Under 5.5"; limite_eval = 5
                     prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
                 elif k_proy_int == 5:
-                    tipo_jugada = "Under 6.5"; limite_eval = 6
-                    prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
+                    tipo_jugada = "Over 3.5"; limite_eval = 3
+                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
                 elif k_proy_int == 6:
                     tipo_jugada = "Over 4.5"; limite_eval = 4
                     prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
@@ -578,8 +578,11 @@ def get_strikeout_hunters(fecha_hoy):
                 elif k_proy_int == 8:
                     tipo_jugada = "Over 6.5"; limite_eval = 6
                     prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
-                else: # 9 o más
+                elif k_proy_int == 9:
                     tipo_jugada = "Over 7.5"; limite_eval = 7
+                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
+                else: # 10 o más
+                    tipo_jugada = "Over 8.5"; limite_eval = 8
                     prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
 
                 prob_pct = int(round(prob_exacta * 100))
