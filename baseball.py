@@ -614,12 +614,12 @@ def get_strikeout_hunters(fecha_hoy):
             
             es_alta_seg = False
             
-            # 🌟 FILTRO DINÁMICO DE ESTRELLA: Probabilidad exigente (>= 65%) + Blindaje de Innings
+            # 🌟 FILTRO DINÁMICO DE ESTRELLA: Probabilidad (>= 75%) + Blindaje de Innings
             if "Under" in r["tipo_jugada"]:
-                if r["prob_pct"] >= 65 and ip_val <= 5.0:
+                if r["prob_pct"] >= 75 and ip_val <= 5.0:
                     es_alta_seg = True
             else: # Over
-                if r["prob_pct"] >= 65 and ip_val > 5.0:
+                if r["prob_pct"] >= 75 and ip_val > 5.0:
                     es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
@@ -1367,11 +1367,11 @@ if st.session_state.df_mlb is not None:
         st.markdown("El radar escanea la proyección matemática exacta del lanzador y asigna una línea de apuestas hecha a la medida, desde Under 2.5 hasta Over 8.5. Se descartan automáticamente lanzadores con K/9 >= 11.0 para evitar 'espejismos' o inflaciones de casino.")
         
         st.markdown("**⭐ Para las jugadas UNDER:**")
-        st.markdown("* **📉 Probabilidad Sólida (>=65%):** El modelo detecta valor en la cuota al proyectar un bajo rendimiento.")
+        st.markdown("* **📉 Probabilidad Sólida (>=75%):** El modelo detecta gran valor en la cuota al proyectar un bajo rendimiento.")
         st.markdown("* **⏱️ Límite de Volumen (IP <= 5.0):** Garantiza que el lanzador no avanzará más allá del quinto inning, limitando su exposición.")
         
         st.markdown("**⭐ Para las jugadas OVER:**")
-        st.markdown("* **📈 Probabilidad Sólida (>=65%):** Asegura una ventaja clara incluso sobre la línea ajustada.")
+        st.markdown("* **📈 Probabilidad Sólida (>=75%):** Asegura una ventaja clara incluso sobre la línea ajustada.")
         st.markdown("* **⏱️ Volumen de Élite (IP > 5.0):** Aseguramos que el mánager lo dejará lanzar profundo, maximizando sus oportunidades de abanicar.")
 
         st.markdown("---")
