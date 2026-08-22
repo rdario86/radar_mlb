@@ -615,8 +615,8 @@ def get_strikeout_hunters(fecha_hoy):
             
             es_alta_seg = False
             
-            # 🌟 FILTRO DINÁMICO DE ESTRELLA (PROB >= 70%) - Sin restricciones de IP
-            if r["prob_pct"] >= 70: # <--- Ajustado a 70%
+            # 🌟 FILTRO DINÁMICO DE ESTRELLA (PROB >= 75%) - Sin restricciones de IP
+            if r["prob_pct"] >= 75: # <--- Ajustado a 75%
                 es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
@@ -1364,10 +1364,10 @@ if st.session_state.df_mlb is not None:
         st.markdown("El radar escanea la proyección matemática del lanzador y le asigna una línea que nos otorga un 'colchón' de entre 1.0 y 1.5 ponches de ventaja. Por ejemplo, si proyectamos 3 ponches, atacamos el Under 4.5.")
         
         st.markdown("**⭐ Para las jugadas UNDER:**")
-        st.markdown("* **📉 Probabilidad de Alta Seguridad (>=70%):** El modelo aprovecha el colchón matemático para exigir un margen de seguridad sólido en bajas.")
+        st.markdown("* **📉 Probabilidad de Alta Seguridad (>=75%):** El modelo aprovecha el colchón matemático para exigir un margen de seguridad sólido en bajas.")
         
         st.markdown("**⭐ Para las jugadas OVER:**")
-        st.markdown("* **📈 Probabilidad de Alta Seguridad (>=70%):** La línea asignada es conservadora, permitiendo que el pitcher se quede un ponche corto de su proyección y aún así exigir una alta probabilidad estadística.")
+        st.markdown("* **📈 Probabilidad de Alta Seguridad (>=75%):** La línea asignada es conservadora, permitiendo que el pitcher se quede un ponche corto de su proyección y aún así exigir una alta probabilidad estadística.")
 
         st.markdown("---")
 
