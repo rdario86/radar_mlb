@@ -531,29 +531,24 @@ def get_strikeout_hunters(fecha_hoy):
                 innings_enteros = avg_outs_redondeado // 3
                 outs_sobrantes = avg_outs_redondeado % 3
                 
-                # FILTRO DE VOLUMEN: Solo piso (>= 3.0 IP). ¡Sin techo!
+                # FILTRO DE VOLUMEN: Solo piso (>= 3.0 IP)
                 if avg_outs_redondeado < 9:
                     continue
                 
                 ip_pantalla = f"{innings_enteros}.{outs_sobrantes}"
 
-                # PROMEDIO PONDERADO POR VOLUMEN 
                 k_per_out = l7_ks / l7_outs if l7_outs > 0 else 0
                 promedio_k_ponderado = k_per_out * avg_outs_redondeado
 
                 proj_k = (promedio_k_ponderado * factor_rival)
-                
-                k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1) 
+                k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1)
                 
                 # -------------------------------------------------------------
-                # NUEVA LÍNEA DINÁMICA: MARGEN DE SEGURIDAD AJUSTADO
+                # NUEVA LÍNEA DINÁMICA: AJUSTE ESTRICTO A LA PROYECCIÓN
                 # -------------------------------------------------------------
                 k_proy_int = int(round(proj_k))
                 
-                if k_proy_int <= 1:
-                    tipo_jugada = "Under 1.5"; limite_eval = 1
-                    prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
-                elif k_proy_int == 2:
+                if k_proy_int <= 2:
                     tipo_jugada = "Under 2.5"; limite_eval = 2
                     prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
                 elif k_proy_int == 3:
@@ -603,7 +598,8 @@ def get_strikeout_hunters(fecha_hoy):
                     "tipo_jugada": tipo_jugada,
                     "prob_pct": prob_pct,
                     "prob_exacta": prob_exacta,
-                    "📝 Evaluación": eval_str
+                    "📝 Evaluación": eval_str,
+                    "outs_avg": avg_outs_redondeado # <--- VARIABLE INTERNA PARA AUDITAR EL TECHO DE OUTS
                 })
 
         pitchers_data.sort(key=lambda x: x['prob_exacta'], reverse=True)
@@ -611,13 +607,21 @@ def get_strikeout_hunters(fecha_hoy):
 
         nuevo_top4 = []
         for r in top_4:
+            ip_val = float(r["⏱️ Proy. IP"])
             k9_val = float(r["🔥 K/9 (L7)"])
+            outs_val = r["outs_avg"]
             
             es_alta_seg = False
             
-            # 🌟 FILTRO DINÁMICO DE ESTRELLA (PROB >= 70%) - Sin restricciones de IP
-            if r["prob_pct"] >= 70: # <--- Ajustado a 70%
-                es_alta_seg = True
+            # 🌟 FILTRO DINÁMICO DE ESTRELLA (ASIMÉTRICO)
+            if "Under" in r["tipo_jugada"]:
+                # Under: Exigimos 70% y la Correa Corta (<= 14 outs, es decir, < 5.0 IP)
+                if r["prob_pct"] >= 70 and outs_val <= 14:
+                    es_alta_seg = True
+            else: 
+                # Over: Bajamos la guardia al 65% y exigimos volumen de élite (> 5.0 IP)
+                if r["prob_pct"] >= 65 and ip_val > 5.0:
+                    es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
 
@@ -1376,14 +1380,16 @@ if st.session_state.df_mlb is not None:
 
         st.markdown("---")
 
-        st.markdown("#### 🔥 Caza-Ponches (Líneas Alternativas con Margen de Seguridad)")
-        st.markdown("El radar escanea la proyección matemática del lanzador y le asigna una línea que nos otorga un 'colchón' de entre 1.0 y 1.5 ponches de ventaja. Por ejemplo, si proyectamos 3 ponches, atacamos el Under 4.5.")
+        st.markdown("#### 🔥 Caza-Ponches (Líneas Alternativas Ajustadas)")
+        st.markdown("El radar escanea la proyección matemática del lanzador y le asigna una línea estricta basada en su proyección entera (ej: proyecta 3 Ks -> Under 3.5; proyecta 6 Ks -> Over 5.5). Para proteger la rentabilidad, el modelo audita a los abridores de forma asimétrica.")
         
         st.markdown("**⭐ Para las jugadas UNDER:**")
-        st.markdown("* **📉 Probabilidad de Alta Seguridad (>=70%):** El modelo aprovecha el colchón matemático para exigir un margen de seguridad sólido en bajas.")
+        st.markdown("* **📉 Probabilidad (>=70%):** Exige precisión de Poisson evaluando la vulnerabilidad real.")
+        st.markdown("* **⏱️ Límite de Volumen Restringido (<= 14 Outs):** Activa la 'correa corta', descartando a cualquier lanzador que promedie culminar el quinto inning o más.")
         
         st.markdown("**⭐ Para las jugadas OVER:**")
-        st.markdown("* **📈 Probabilidad de Alta Seguridad (>=70%):** La línea asignada es conservadora, permitiendo que el pitcher se quede un ponche corto de su proyección y aún así exigir una alta probabilidad estadística.")
+        st.markdown("* **📈 Probabilidad (>=65%):** El radar asume el ajuste estricto de la línea, detectando ventajas sin asfixiar la muestra matemática.")
+        st.markdown("* **⏱️ Volumen de Élite (IP > 5.0):** Aseguramos que el mánager lo dejará lanzar profundo, garantizando volumen de pitcheos.")
 
         st.markdown("---")
 
