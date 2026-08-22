@@ -555,34 +555,34 @@ def get_strikeout_hunters(fecha_hoy):
                 k_proy_int = int(round(proj_k))
                 
                 if k_proy_int <= 1:
-                    tipo_jugada = "Under 2.5"; limite_eval = 2
+                    tipo_jugada = "Under 1.5"; limite_eval = 1
                     prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
                 elif k_proy_int == 2:
-                    tipo_jugada = "Under 3.5"; limite_eval = 3
+                    tipo_jugada = "Under 2.5"; limite_eval = 2
                     prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
                 elif k_proy_int == 3:
-                    tipo_jugada = "Under 4.5"; limite_eval = 4
+                    tipo_jugada = "Under 3.5"; limite_eval = 3
                     prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
                 elif k_proy_int == 4:
-                    tipo_jugada = "Under 5.5"; limite_eval = 5
+                    tipo_jugada = "Under 4.5"; limite_eval = 4
                     prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
                 elif k_proy_int == 5:
-                    tipo_jugada = "Over 3.5"; limite_eval = 3
-                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
-                elif k_proy_int == 6:
                     tipo_jugada = "Over 4.5"; limite_eval = 4
                     prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
-                elif k_proy_int == 7:
+                elif k_proy_int == 6:
                     tipo_jugada = "Over 5.5"; limite_eval = 5
                     prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
-                elif k_proy_int == 8:
+                elif k_proy_int == 7:
                     tipo_jugada = "Over 6.5"; limite_eval = 6
                     prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
-                elif k_proy_int == 9:
+                elif k_proy_int == 8:
                     tipo_jugada = "Over 7.5"; limite_eval = 7
                     prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
-                else: # 10 o más
+                elif k_proy_int == 9:
                     tipo_jugada = "Over 8.5"; limite_eval = 8
+                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
+                else: # 10 o más
+                    tipo_jugada = "Over 9.5"; limite_eval = 9
                     prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
 
                 prob_pct = int(round(prob_exacta * 100))
