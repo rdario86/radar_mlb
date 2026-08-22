@@ -1366,17 +1366,17 @@ if st.session_state.df_mlb is not None:
 
         st.markdown("---")
 
-        st.markdown("#### 🔥 Caza-Ponches (Líneas Alternativas Multi-Escalón)")
-        st.markdown("El radar escanea la proyección matemática exacta del lanzador y asigna una línea de apuestas hecha a la medida, desde Under 2.5 hasta Over 8.5. Se descartan automáticamente lanzadores con K/9 >= 11.0 para evitar 'espejismos' o inflaciones de casino.")
+        st.markdown("#### 🔥 Caza-Ponches (Líneas Alternativas con Margen de Seguridad)")
+        st.markdown("El radar escanea la proyección matemática del lanzador y le asigna una línea que nos otorga un 'colchón' de entre 1.0 y 1.5 ponches de ventaja. Por ejemplo, si proyectamos 3 ponches, atacamos el Under 4.5. Se descartan automáticamente lanzadores con K/9 >= 11.0.")
         
         st.markdown("**⭐ Para las jugadas UNDER:**")
-        st.markdown("* **📉 Probabilidad Contundente (>=70%):** El modelo exige un margen de seguridad sólido incluso sobre la línea ajustada.")
-        st.markdown("* **⏱️ Límite de Volumen (IP <= 5.0):** Garantiza que el lanzador no avanzará más allá del quinto inning, limitando su exposición.")
+        st.markdown("* **📉 Probabilidad de Élite (>=85%):** El modelo aprovecha el colchón matemático para exigir un margen de seguridad absoluto en bajas.")
+        st.markdown("* **⏱️ Límite de Volumen (IP <= 5.0):** Garantiza que el lanzador no avanzará más allá del quinto inning.")
         
         st.markdown("**⭐ Para las jugadas OVER:**")
-        st.markdown("* **📈 Probabilidad Contundente (>=70%):** Exige proyectar con certeza estadística el éxito del lanzador (+EV).")
-        st.markdown("* **⏱️ Volumen de Élite (IP > 5.0):** Aseguramos que el mánager lo dejará lanzar profundo, maximizando sus oportunidades de abanicar.")
-
+        st.markdown("* **📈 Probabilidad de Élite (>=85%):** La línea asignada es conservadora, permitiendo que el pitcher se quede un ponche corto de su proyección y aún así exigir una altísima probabilidad estadística.")
+        st.markdown("* **⏱️ Volumen de Élite (IP > 5.0):** Aseguramos que el mánager lo dejará lanzar profundo, garantizando volumen de pitcheos.")
+
         st.markdown("---")
 
         st.markdown("#### 🔹 Caza-Hits (1+ Imparables)")
