@@ -543,11 +543,7 @@ def get_strikeout_hunters(fecha_hoy):
 
                 proj_k = (promedio_k_ponderado * factor_rival)
                 
-                k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1)
-                
-                # FILTRO ANTIMINAS: Descartamos inflaciones de casino
-                if k9 >= 11.0:
-                    continue
+                k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1) 
                 
                 # -------------------------------------------------------------
                 # NUEVA LÍNEA DINÁMICA: MARGEN DE SEGURIDAD AJUSTADO
