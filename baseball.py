@@ -1147,7 +1147,7 @@ if st.session_state.df_mlb is not None:
 
     with tab5:
         st.markdown("### 📊 Auditoría Premium (Últimos 7 Días previos a la fecha elegida)")
-        st.markdown("Evalúa estrictamente la rentabilidad de las jugadas de Alta Seguridad (⭐). El radar de ponches ahora se audita sobre sus líneas alternativas dinámicas, adaptadas a cada lanzador.")
+        st.markdown("Evalúa estrictamente la rentabilidad de las jugadas de Alta Seguridad (⭐). El radar de ponches ahora se audita sobre sus líneas alternativas dinámicas, adaptadas a cada lanzador y separadas por tipo de jugada (Over/Under).")
 
         if st.button("🔍 Ejecutar Auditoría Premium", type="primary", use_container_width=True):
             # Conectamos la auditoría al "Motor de Tiempo" del sidebar
@@ -1229,19 +1229,30 @@ if st.session_state.df_mlb is not None:
                         if r_ganador == ganador: aciertos_gan_premium += 1
                         total_gan_premium += 1
 
+                # Extracción y filtrado de ponches premium
                 k_data = get_strikeout_hunters(fecha_str)
                 premium_k_data = [k for k in k_data if '⭐' in k['⚾ Abridor']]
                 
-                aciertos_k = sum(1 for k in premium_k_data if '✅' in k['📝 Evaluación'])
-                fallos_k = sum(1 for k in premium_k_data if '❌' in k['📝 Evaluación'])
-                total_k = aciertos_k + fallos_k
+                # SEPARACIÓN ESTRATÉGICA: UNDER vs OVER
+                premium_under = [k for k in premium_k_data if "Under" in k["🎯 Jugada"]]
+                premium_over = [k for k in premium_k_data if "Over" in k["🎯 Jugada"]]
+
+                aciertos_under = sum(1 for k in premium_under if '✅' in k['📝 Evaluación'])
+                fallos_under = sum(1 for k in premium_under if '❌' in k['📝 Evaluación'])
+                total_under = aciertos_under + fallos_under
+
+                aciertos_over = sum(1 for k in premium_over if '✅' in k['📝 Evaluación'])
+                fallos_over = sum(1 for k in premium_over if '❌' in k['📝 Evaluación'])
+                total_over = aciertos_over + fallos_over
 
                 resultados.append({
                     "Fecha": fecha_str,
                     "Ganadores ⭐": f"{aciertos_gan_premium}/{total_gan_premium}",
-                    "Ponches O/U ⭐": f"{aciertos_k}/{total_k}",
+                    "Under K ⭐": f"{aciertos_under}/{total_under}",
+                    "Over K ⭐": f"{aciertos_over}/{total_over}",
                     "Efect. Ganadores (%)": round(aciertos_gan_premium/total_gan_premium*100, 1) if total_gan_premium else 0,
-                    "Efect. Caza-Ponches (%)": round(aciertos_k/total_k*100, 1) if total_k else 0
+                    "Efect. Under (%)": round(aciertos_under/total_under*100, 1) if total_under else 0,
+                    "Efect. Over (%)": round(aciertos_over/total_over*100, 1) if total_over else 0
                 })
 
                 barra_progreso.progress((idx + 1) / len(fechas_auditar))
@@ -1269,14 +1280,19 @@ if st.session_state.df_mlb is not None:
 
                 total_gan_acc = sum(int(r["Ganadores ⭐"].split('/')[0]) for r in resultados)
                 total_gan_eval = sum(int(r["Ganadores ⭐"].split('/')[1]) for r in resultados)
-                total_k_acc = sum(int(r["Ponches O/U ⭐"].split('/')[0]) for r in resultados)
-                total_k_eval = sum(int(r["Ponches O/U ⭐"].split('/')[1]) for r in resultados)
+                
+                total_under_acc = sum(int(r["Under K ⭐"].split('/')[0]) for r in resultados)
+                total_under_eval = sum(int(r["Under K ⭐"].split('/')[1]) for r in resultados)
+                
+                total_over_acc = sum(int(r["Over K ⭐"].split('/')[0]) for r in resultados)
+                total_over_eval = sum(int(r["Over K ⭐"].split('/')[1]) for r in resultados)
 
                 st.markdown("---")
                 st.markdown("### 📊 Resumen Acumulado de Élite (7 días)")
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 col1.metric("Aciertos Ganadores Premium", f"{total_gan_acc}/{total_gan_eval}", f"{round(total_gan_acc/total_gan_eval*100,1)}%" if total_gan_eval else "0%")
-                col2.metric("Aciertos Caza-Ponches Premium", f"{total_k_acc}/{total_k_eval}", f"{round(total_k_acc/total_k_eval*100,1)}%" if total_k_eval else "0%")
+                col2.metric("Aciertos BAJAS (Under) Premium", f"{total_under_acc}/{total_under_eval}", f"{round(total_under_acc/total_under_eval*100,1)}%" if total_under_eval else "0%")
+                col3.metric("Aciertos ALTAS (Over) Premium", f"{total_over_acc}/{total_over_eval}", f"{round(total_over_acc/total_over_eval*100,1)}%" if total_over_eval else "0%")
             else:
                 st.warning("No se encontraron juegos finalizados en los últimos 7 días.")
                 
