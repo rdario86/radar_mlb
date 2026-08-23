@@ -1388,16 +1388,18 @@ if st.session_state.df_mlb is not None:
         st.markdown("---")
 
         st.markdown("#### 🔥 Caza-Ponches (Líneas Alternativas Ajustadas)")
-        st.markdown("El radar escanea la proyección matemática del lanzador y le asigna una línea estricta basada en su proyección entera (ej: proyecta 3 Ks -> Under 3.5; proyecta 6 Ks -> Over 5.5). Para proteger la rentabilidad, el modelo audita a los abridores de forma asimétrica.")
+        st.markdown("El radar escanea la proyección matemática del lanzador y le asigna una línea estricta basada en su proyección entera (ej: proyecta 3 Ks -> Under 3.5; proyecta 6 Ks -> Over 5.5).")
         
-        st.markdown("**⭐ Para las jugadas UNDER:**")
+        st.markdown("**🛡️ El Embudo Maestro (Filtro Global Pre-Top 4):**")
+        st.markdown("Para limpiar la cartelera de 'falsos positivos', el radar descarta desde la raíz a los lanzadores que no tienen el perfil puro. Solo se muestran Unders si el K/9 es menor a 8.0 (contacto extremo), y solo se muestran Overs si el K/9 es de 9.0 o más (ponchadores puros).")
+
+        st.markdown("**⭐ Estrellas Premium UNDER:**")
         st.markdown("* **📉 Probabilidad (>=70%):** Exige precisión de Poisson evaluando la vulnerabilidad real.")
-        st.markdown("* **🛡️ Escudo Anti-Lanzallamas (K/9 < 9.0):** Obliga a que el pitcher sea de contacto, evitando relevistas de poder.")
-        st.markdown("* **⏱️ Límite de Volumen Restringido (<= 12 Outs):** Activa la 'correa corta', descartando a cualquier lanzador que promedie culminar el quinto inning o más (máximo 4.0 IP).")
+        st.markdown("* **⏱️ Límite de Volumen (<= 12 Outs):** Activa la 'correa corta', descartando a lanzadores que promedien ir más allá de 4.0 IP.")
         
-        st.markdown("**⭐ Para las jugadas OVER:**")
-        st.markdown("* **📈 Probabilidad (>=60%):** El radar asume el ajuste estricto de la línea, detectando ventajas sin asfixiar la muestra matemática.")
-        st.markdown("* **⏱️ Volumen de Élite (IP > 5.0):** Aseguramos que el mánager lo dejará lanzar profundo, garantizando volumen de pitcheos.")
+        st.markdown("**⭐ Estrellas Premium OVER:**")
+        st.markdown("* **📈 Probabilidad (>=60%):** El radar asume el ajuste estricto de la línea, detectando ventajas seguras.")
+        st.markdown("* **⏱️ Volumen de Élite (> 5.0 IP):** Aseguramos que el mánager lo dejará lanzar profundo.")
 
         st.markdown("---")
 
