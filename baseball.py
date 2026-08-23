@@ -329,7 +329,7 @@ def get_hrr_hunters(fecha_hoy):
                         # 1. EL EMBUDO MAESTRO OFENSIVO: Filtro de Volumen de Turnos
                         # =========================================================
                         avg_pa = l7_pa / juegos_jugados
-                        if avg_pa <= 3.5:
+                        if avg_pa <= 3.0:
                             continue  # Descartado si no garantiza turnos al bate
                             
                         # =========================================================
@@ -1429,7 +1429,7 @@ if st.session_state.df_mlb is not None:
         st.markdown("Proyecta si un bateador superará el **Over 1.5 en H+R+RBI**.")
         
         st.markdown("**🛡️ El Embudo de Volumen:**")
-        st.markdown("Para garantizar oportunidades reales, el sistema descarta instantáneamente a cualquier jugador que promedie **3.5 turnos (PA) o menos** en sus últimos 7 juegos.")
+        st.markdown("Para garantizar oportunidades reales, el sistema descarta instantáneamente a cualquier jugador que promedie **3.0 turnos (PA) o menos** en sus últimos 7 juegos (permitiendo días de descanso ocasionales sin penalizar la evaluación).")
 
         st.markdown("**⭐ Selección Premium (Alta Seguridad):**")
         st.markdown("* **📈 Multiplicador WHIP:** La proyección matemática base del bateador se multiplica usando el WHIP del abridor rival contra la constante de la liga (1.30).")
