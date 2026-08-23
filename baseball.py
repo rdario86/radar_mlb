@@ -626,8 +626,8 @@ def get_strikeout_hunters(fecha_hoy):
                 if r["prob_pct"] >= 70 and outs_val <= 12:
                     es_alta_seg = True
             else: 
-                # Over: Bajamos la guardia al 60% y exigimos volumen de élite (> 5.0 IP)
-                if r["prob_pct"] >= 60 and ip_val > 5.0:
+                # Over: Bajamos la guardia al 60% y exigimos volumen de élite (>= 5.0 IP)
+                if r["prob_pct"] >= 60 and ip_val >= 5.0:
                     es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
@@ -1399,7 +1399,7 @@ if st.session_state.df_mlb is not None:
         
         st.markdown("**⭐ Estrellas Premium OVER:**")
         st.markdown("* **📈 Probabilidad (>=60%):** El radar asume el ajuste estricto de la línea, detectando ventajas seguras.")
-        st.markdown("* **⏱️ Volumen de Élite (> 5.0 IP):** Aseguramos que el mánager lo dejará lanzar profundo.")
+        st.markdown("* **⏱️ Volumen de Élite (>= 5.0 IP):** Aseguramos que el mánager confía en él para cubrir el estándar mínimo de 5 entradas completas, garantizando el volumen de pitcheos.")
 
         st.markdown("---")
 
