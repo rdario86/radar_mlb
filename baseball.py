@@ -249,163 +249,162 @@ def get_bullpen_metrics(team_id, fecha_corte):
     except Exception: 
         return avg_whip
 
-def get_hit_hunters(anio, fecha_hoy):
+def get_hrr_hunters(fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
-        equipos_hoy = {}
+        if not juegos_hoy: return []
         
-        def get_pitcher_hand(p_name):
-            if not p_name or p_name == 'TBD': return 'R' 
-            try:
-                pl = statsapi.lookup_player(p_name)
-                return pl[0].get('pitchHand', {}).get('code', 'R') if pl else 'R'
-            except: return 'R'
-
+        hrr_data = []
         for juego in juegos_hoy:
-            if juego.get('status', '') not in ['Postponed', 'Cancelled']:
-                p_local, p_visita = get_starting_pitchers(juego)
-                h_id = juego.get('home_id')
-                a_id = juego.get('away_id')
-                
-                hand_local = get_pitcher_hand(p_local)
-                hand_visita = get_pitcher_hand(p_visita)
-                
-                equipos_hoy[h_id] = {
-                    'condicion': 'Local', 'status': juego.get('status'),
-                    'opp_id': a_id, 'opp_pitcher': p_visita, 'opp_hand': hand_visita
-                }
-                equipos_hoy[a_id] = {
-                    'condicion': 'Visitante', 'status': juego.get('status'),
-                    'opp_id': h_id, 'opp_pitcher': p_local, 'opp_hand': hand_local
-                }
-
-        data = statsapi.get('stats_leaders', {'leaderCategories': 'battingAverage', 'season': anio, 'limit': 80, 'statGroup': 'hitting'})
-        if not data or 'leagueLeaders' not in data or len(data['leagueLeaders']) == 0:
-            return []
-
-        leaders = data['leagueLeaders'][0].get('leaders', [])
-        jugadores_activos = []
-        for p in leaders:
-            team_id = p.get('team', {}).get('id')
-            if team_id in equipos_hoy:
-                p['condicion_hoy'] = equipos_hoy[team_id]['condicion']
-                p['game_status'] = equipos_hoy[team_id]['status']
-                p['opp_id'] = equipos_hoy[team_id]['opp_id']
-                p['opp_pitcher'] = equipos_hoy[team_id]['opp_pitcher']
-                p['opp_hand'] = equipos_hoy[team_id]['opp_hand']
-                p['team_name'] = p.get('team', {}).get('name', 'Unknown')
-                jugadores_activos.append(p)
-
-        resultados = []
-        ayer_dt = datetime.datetime.strptime(fecha_hoy, '%Y-%m-%d') - datetime.timedelta(days=1)
-        fecha_ayer_str = ayer_dt.strftime('%Y-%m-%d')
-
-        for p in jugadores_activos:
-            p_id = p.get('person', {}).get('id')
-            p_name = p.get('person', {}).get('fullName')
-            team_name = p.get('team_name', 'Unknown')
-            condicion = p.get('condicion_hoy', 'Visitante')
-            game_status = p.get('game_status', '')
+            if juego.get('status', '') in ['Postponed', 'Cancelled']: continue
+            g_status = juego.get('status', '')
             
-            opp_id = p.get('opp_id')
-            opp_pitcher = p.get('opp_pitcher')
-            opp_hand = p.get('opp_hand')
-
-            raw_data = statsapi.get('people', {'personIds': p_id, 'hydrate': 'currentTeam,stats(group=[hitting],type=[season,gameLog])'})
-            person = raw_data.get('people', [{}])[0]
+            # Extraemos lanzadores y sus WHIPs
+            p_local, p_visita = get_starting_pitchers(juego)
+            whip_l = 1.30; whip_v = 1.30
             
-            current_team_obj = person.get('currentTeam', {})
-            if current_team_obj:
-                team_name = current_team_obj.get('name', team_name)
+            if p_local and p_local != 'TBD':
+                try: whip_l, _ = get_pitcher_whip(p_local, fecha_hoy)
+                except: pass
+            if p_visita and p_visita != 'TBD':
+                try: whip_v, _ = get_pitcher_whip(p_visita, fecha_hoy)
+                except: pass
                 
-            bat_hand = person.get('batSide', {}).get('code', 'R')
+            matchups = [
+                (juego.get('away_id'), juego.get('away_name'), whip_l, juego.get('home_name')),
+                (juego.get('home_id'), juego.get('home_name'), whip_v, juego.get('away_name'))
+            ]
+            
+            anio_str = str(fecha_hoy)[:4]
+            
+            for team_id, team_name, opp_whip, opp_team in matchups:
+                if not team_id: continue
                 
-            stats_blocks = person.get('stats', [])
-
-            season_ab = 1; season_hits = 0
-            l10_hits = 0; l10_ab = 0
-            hits_hoy_real = 0; ab_hoy_real = 0
-
-            for block in stats_blocks:
-                if block.get('type', {}).get('displayName') == 'season':
-                    season_ab = int(block.get('splits', [{}])[0].get('stat', {}).get('atBats', 1))
-                    season_hits = int(block.get('splits', [{}])[0].get('stat', {}).get('hits', 0))
-                elif block.get('type', {}).get('displayName') == 'gameLog':
-                    splits = block.get('splits', [])
-                    valid_splits = [s for s in splits if s.get('date', '') < fecha_hoy]
-                    valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
-
-                    for game in valid_splits[:10]:
-                        g_stats = game.get('stat', {})
-                        l10_hits += int(g_stats.get('hits', 0))
-                        l10_ab += int(g_stats.get('atBats', 0))
-
-                    for game in splits:
-                        if game.get('date') == fecha_hoy:
-                            hits_hoy_real += int(game.get('stat', {}).get('hits', 0))
-                            ab_hoy_real += int(game.get('stat', {}).get('atBats', 0))
-
-            season_hits = max(0, season_hits - hits_hoy_real)
-            season_ab = max(1, season_ab - ab_hoy_real)
-            l10_ab = max(1, l10_ab)
-
-            avg_index_base = (season_hits / season_ab * 0.6) + (l10_hits / l10_ab * 0.4)
-
-            platoon_mod = 1.0 
-            if bat_hand == 'S': 
-                platoon_mod = 1.05 
-            elif bat_hand != opp_hand:
-                platoon_mod = 1.05 
-            else:
-                platoon_mod = 0.95 
-
-            whip_abridor, _ = get_pitcher_whip(opp_pitcher, fecha_hoy)
-            whip_bullpen = get_bullpen_metrics(opp_id, fecha_hoy)
-            whip_combinado = (whip_abridor * 0.6) + (whip_bullpen * 0.4)
-            factor_pitcheo = whip_combinado / 1.30
-            factor_pitcheo = max(0.90, min(1.10, factor_pitcheo))
-            
-            avg_index_ajustado = avg_index_base * factor_pitcheo * platoon_mod
-
-            prob_1hit = 1 - (1 - avg_index_ajustado) ** 3.8
-            prob_1hit_pct = int(round(prob_1hit * 100))
-
-            eval_str = "⏳ Pendiente"
-            if game_status in ['Final', 'Game Over']:
-                if ab_hoy_real == 0:
-                    eval_str = "🚫 No jugó"
-                else:
-                    eval_str = "✅ Acierto" if hits_hoy_real >= 1 else "❌ Fallo"
-
-            avg_l10_val = l10_hits / l10_ab if l10_ab > 0 else 0
-            
+                # Obtenemos el roster activo completo para no depender de lineups tardíos
+                try:
+                    team_info = statsapi.get('teams', {'teamId': team_id, 'season': anio_str, 'hydrate': 'roster'})
+                    roster = team_info['teams'][0]['roster']['roster']
+                except: continue
+                
+                for player in roster:
+                    if player['position']['abbreviation'] == 'P': continue # Descartamos lanzadores
+                    
+                    batter_id = player['person']['id']
+                    b_name = player['person']['fullName']
+                    
+                    try:
+                        raw_data = statsapi.get('people', {'personIds': batter_id, 'hydrate': 'stats(group=[hitting],type=[gameLog])'})
+                        person_info = raw_data.get('people', [{}])[0]
+                        
+                        stats_blocks = person_info.get('stats', [])
+                        all_splits = []
+                        for block in stats_blocks:
+                            if block.get('type', {}).get('displayName') == 'gameLog':
+                                all_splits.extend(block.get('splits', []))
+                                
+                        valid_splits = [s for s in all_splits if s.get('date', '') < fecha_hoy]
+                        valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
+                        
+                        last_7 = valid_splits[:7]
+                        juegos_jugados = len(last_7)
+                        if juegos_jugados == 0: continue
+                        
+                        l7_pa = 0; l7_h = 0; l7_r = 0; l7_rbi = 0
+                        pa_hoy_real = 0; hrr_hoy_real = 0
+                        
+                        for game in last_7:
+                            g_stats = game.get('stat', {})
+                            l7_pa += int(g_stats.get('plateAppearances', 0))
+                            l7_h += int(g_stats.get('hits', 0))
+                            l7_r += int(g_stats.get('runs', 0))
+                            l7_rbi += int(g_stats.get('rbi', 0))
+                            
+                        for s in all_splits:
+                            if s.get('date') == fecha_hoy:
+                                gs = s.get('stat', {})
+                                pa_hoy_real = int(gs.get('plateAppearances', 0))
+                                hrr_hoy_real = int(gs.get('hits', 0)) + int(gs.get('runs', 0)) + int(gs.get('rbi', 0))
+                        
+                        # =========================================================
+                        # 1. EL EMBUDO MAESTRO OFENSIVO: Filtro de Volumen de Turnos
+                        # =========================================================
+                        avg_pa = l7_pa / juegos_jugados
+                        if avg_pa <= 3.5:
+                            continue  # Descartado si no garantiza turnos al bate
+                            
+                        # =========================================================
+                        # 2. PRODUCCIÓN Y FACTOR WHIP
+                        # =========================================================
+                        hrr_total_l7 = l7_h + l7_r + l7_rbi
+                        avg_hrr = hrr_total_l7 / juegos_jugados
+                        
+                        if opp_whip == 0: opp_whip = 1.30
+                        factor_whip = opp_whip / 1.30
+                        
+                        proy_hrr = avg_hrr * factor_whip
+                        
+                        # =========================================================
+                        # 3. CÁLCULO DE PROBABILIDAD POISSON (OVER 1.5)
+                        # =========================================================
+                        # Poisson evalúa la probabilidad de hacer 2 o más (1 - prob de hacer 0 o 1)
+                        prob_exacta = 1 - poisson.cdf(1, proy_hrr)
+                        prob_pct = int(round(prob_exacta * 100))
+                        
+                        eval_str = "⏳ Pendiente"
+                        if g_status in ['Final', 'Game Over']:
+                            if pa_hoy_real == 0:
+                                eval_str = "🚫 No jugó"
+                            else:
+                                if hrr_hoy_real >= 2:
+                                    eval_str = f"✅ Acierto ({hrr_hoy_real} H+R+RBI)"
+                                else:
+                                    eval_str = f"❌ Fallo ({hrr_hoy_real} H+R+RBI)"
+                                    
+                        hrr_data.append({
+                            "⚾ Bateador": b_name,
+                            "👕 Equipo": team_name,
+                            "⚔️ Rival": opp_team,
+                            "🎯 Jugada": "Over 1.5 (H+R+RBI)",
+                            "📊 Avg PA (L7)": round(avg_pa, 1),
+                            "🔥 HRR/G (L7)": round(avg_hrr, 2),
+                            "📈 Proy Final": round(proy_hrr, 2),
+                            "📉 Probabilidad": prob_pct,
+                            "prob_exacta": prob_exacta,
+                            "📝 Evaluación": eval_str
+                        })
+                        
+                    except Exception:
+                        continue
+                        
+        hrr_data.sort(key=lambda x: x['prob_exacta'], reverse=True)
+        top_4 = hrr_data[:4]
+        
+        nuevo_top4 = []
+        for r in top_4:
             es_alta_seg = False
-            if prob_1hit_pct >= 85 and avg_l10_val >= 0.350 and whip_combinado >= 1.35:
-                if bat_hand == 'S' or bat_hand != opp_hand:
-                    es_alta_seg = True
-
-            nombre_bateador = f"⭐ {p_name}" if es_alta_seg else p_name
-
-            resultados.append({
+            
+            # 🌟 ESTRELLA PREMIUM: Probabilidad Poisson >= 65%
+            if r["📉 Probabilidad"] >= 65:
+                es_alta_seg = True
+                
+            nombre_bateador = f"⭐ {r['⚾ Bateador']}" if es_alta_seg else r['⚾ Bateador']
+            
+            nuevo_top4.append({
                 "⚾ Bateador": nombre_bateador,
-                "👕 Equipo": team_name,
-                "⚔️ Rival": f"{opp_pitcher or 'TBD'} ({opp_hand})",
-                "🏟️ Condición": condicion,
-                "📊 AVG Temp.": f"{season_hits / season_ab:.3f}" if season_ab > 0 else ".000",
-                "🔥 AVG L10": f"{l10_hits / l10_ab:.3f}" if l10_ab > 0 else ".000",
-                "🎯 Prob. 1+ Hit": f"{prob_1hit_pct}%",
-                "📝 Evaluación": eval_str,
-                "score": prob_1hit
+                "👕 Equipo": r["👕 Equipo"],
+                "⚔️ Rival": r["⚔️ Rival"],
+                "🎯 Jugada": r["🎯 Jugada"],
+                "📊 Avg PA (L7)": f"{r['📊 Avg PA (L7)']}",
+                "🔥 HRR/G (L7)": f"{r['🔥 HRR/G (L7)']}",
+                "📈 Proy Final": f"{r['📈 Proy Final']}",
+                "📉 Probabilidad": f"{r['📉 Probabilidad']}%",
+                "📝 Evaluación": r["📝 Evaluación"]
             })
-
-        resultados.sort(key=lambda x: x['score'], reverse=True)
-        top4 = resultados[:4]
-        for r in top4:
-            del r['score']
-        return top4
-    except Exception:
+            
+        return nuevo_top4
+    except Exception as e:
         return []
-
+        
 def get_strikeout_hunters(fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
@@ -873,7 +872,7 @@ if st.session_state.df_mlb is not None:
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📅 Cartelera del Día",
     "🔥 Caza-Ponches",
-    "🔹 Caza-Hits",
+    "🔹 Caza-HCI",
     "🧮 Calculadora +EV",
     "📊 Auditoría Semanal",
     "🔬 Lupa de Pitcheo",
@@ -1403,9 +1402,12 @@ if st.session_state.df_mlb is not None:
 
         st.markdown("---")
 
-        st.markdown("#### 🔹 Caza-Hits (1+ Imparables)")
-        st.markdown("El mercado de hits es de alta varianza. Para que un bateador obtenga la estrella, debe enfrentar la 'Tormenta Perfecta' en el plato:")
-        st.markdown("* **🎯 Probabilidad Base (>=85%):** El modelo binomial debe calcular un 85% o más de probabilidad de éxito.")
-        st.markdown("* **🔥 Bateador Encendido (AVG L10 >= .350):** El jugador debe estar viendo la pelota a la perfección, bateando para .350 o más en sus últimos 10 juegos.")
-        st.markdown("* **🛡️ Pitcheo Global Vulnerable (WHIP Combinado >= 1.35):** No basta con un mal abridor; el WHIP combinado (60% Abridor + 40% Bullpen) debe ser de 1.35 o superior, garantizando que el bateador enfrentará lanzadores permisivos durante los 9 innings.")
-        st.markdown("* **⚔️ Ventaja de Pelotón (Platoon Advantage):** El bateador debe pararse en el plato del lado opuesto al brazo de lanzar del abridor (Ej: Bateador Zurdo vs Pitcher Derecho), obteniendo la máxima ventaja visual.")
+        st.markdown("#### 🚀 Radar de Producción (Hits + Carreras + Impulsadas)")
+        st.markdown("Proyecta si un bateador superará el **Over 1.5 en H+R+RBI**.")
+        
+        st.markdown("**🛡️ El Embudo de Volumen:**")
+        st.markdown("Para garantizar oportunidades reales, el sistema descarta instantáneamente a cualquier jugador que promedie **3.5 turnos (PA) o menos** en sus últimos 7 juegos.")
+
+        st.markdown("**⭐ Selección Premium (Alta Seguridad):**")
+        st.markdown("* **📈 Multiplicador WHIP:** La proyección matemática base del bateador se multiplica usando el WHIP del abridor rival contra la constante de la liga (1.30).")
+        st.markdown("* **📉 Probabilidad Poisson (>=65%):** El jugador recibe la estrella premium si el modelo de distribución dictamina que tiene un 65% o más de probabilidades estadísticas de registrar 2 o más unidades de H+R+RBI en el juego.")
