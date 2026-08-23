@@ -259,21 +259,25 @@ def get_hrr_hunters(fecha_hoy):
             if juego.get('status', '') in ['Postponed', 'Cancelled']: continue
             g_status = juego.get('status', '')
             
-            # Extraemos lanzadores y sus WHIPs (Manejo robusto)
+            # Extraemos lanzadores y sus WHIPs con valores por defecto hiper-seguros
             p_local, p_visita = get_starting_pitchers(juego)
             whip_l = 1.30; whip_v = 1.30
             
-            if p_local and p_local != 'TBD':
-                try: whip_l, _ = get_pitcher_whip(p_local, fecha_hoy)
-                except: pass
-            if p_visita and p_visita != 'TBD':
-                try: whip_v, _ = get_pitcher_whip(p_visita, fecha_hoy)
+            if p_local and str(p_local).upper() != 'TBD':
+                try: 
+                    w_temp, _ = get_pitcher_whip(p_local, fecha_hoy)
+                    whip_l = float(w_temp) if w_temp else 1.30
                 except: pass
                 
-            # Mapeo: Bateadores del Visitante vs Abridor Local // Bateadores del Local vs Abridor Visitante
+            if p_visita and str(p_visita).upper() != 'TBD':
+                try: 
+                    w_temp, _ = get_pitcher_whip(p_visita, fecha_hoy)
+                    whip_v = float(w_temp) if w_temp else 1.30
+                except: pass
+                
             matchups = [
-                (juego.get('away_id'), juego.get('away_name'), whip_l, juego.get('home_name')),
-                (juego.get('home_id'), juego.get('home_name'), whip_v, juego.get('away_name'))
+                (juego.get('away_id'), juego.get('away_name', 'Visitante'), whip_l, juego.get('home_name', 'Local')),
+                (juego.get('home_id'), juego.get('home_name', 'Local'), whip_v, juego.get('away_name', 'Visitante'))
             ]
             
             anio_str = str(fecha_hoy)[:4]
@@ -281,43 +285,53 @@ def get_hrr_hunters(fecha_hoy):
             for team_id, team_name, opp_whip, opp_team in matchups:
                 if not team_id: continue
                 
-                # Obtenemos el roster activo
                 try:
+                    # Intento de traer roster
                     team_info = statsapi.get('teams', {'teamId': team_id, 'season': anio_str, 'hydrate': 'roster'})
-                    if 'teams' not in team_info or not team_info['teams']: continue
+                    if not team_info or 'teams' not in team_info or not team_info['teams']: continue
                     
                     roster_data = team_info['teams'][0].get('roster', {})
+                    if not roster_data: continue
+                    
                     roster = roster_data.get('roster', [])
                     if not roster: continue
-                except Exception: continue
+                except Exception:
+                    continue # Salta este equipo, pero no detiene el loop general
                 
                 for player in roster:
-                    # Descartamos a los lanzadores para evaluar solo bateadores
-                    if player.get('position', {}).get('abbreviation') == 'P': continue 
-                    
-                    batter_id = player.get('person', {}).get('id')
-                    b_name = player.get('person', {}).get('fullName')
-                    if not batter_id: continue
-                    
                     try:
+                        pos = player.get('position', {}).get('abbreviation', '')
+                        if pos == 'P': continue 
+                        
+                        person = player.get('person', {})
+                        batter_id = person.get('id')
+                        b_name = person.get('fullName', 'Unknown')
+                        
+                        if not batter_id: continue
+                        
                         raw_data = statsapi.get('people', {'personIds': batter_id, 'hydrate': 'stats(group=[hitting],type=[gameLog])'})
-                        if 'people' not in raw_data or not raw_data['people']: continue
+                        if not raw_data or 'people' not in raw_data or not raw_data['people']: continue
                         person_info = raw_data['people'][0]
                         
                         stats_blocks = person_info.get('stats', [])
+                        if not stats_blocks: continue
+                        
                         all_splits = []
                         for block in stats_blocks:
                             if block.get('type', {}).get('displayName') == 'gameLog':
-                                all_splits.extend(block.get('splits', []))
+                                splits = block.get('splits', [])
+                                if splits: all_splits.extend(splits)
                                 
-                        # Filtramos juegos anteriores a la fecha seleccionada
+                        if not all_splits: continue
+                                
                         valid_splits = [s for s in all_splits if s.get('date', '') < fecha_hoy]
-                        if not valid_splits: continue # No hay historial reciente
+                        if not valid_splits: continue 
                         
                         valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
                         
                         last_7 = valid_splits[:7]
                         juegos_jugados = len(last_7)
+                        if juegos_jugados == 0: continue
                         
                         l7_pa = 0; l7_h = 0; l7_r = 0; l7_rbi = 0
                         pa_hoy_real = 0; hrr_hoy_real = 0
@@ -335,40 +349,24 @@ def get_hrr_hunters(fecha_hoy):
                                 pa_hoy_real = int(gs.get('plateAppearances', 0))
                                 hrr_hoy_real = int(gs.get('hits', 0)) + int(gs.get('runs', 0)) + int(gs.get('rbi', 0))
                         
-                        # =========================================================
-                        # 1. EL EMBUDO MAESTRO OFENSIVO: Filtro de Volumen de Turnos (PA > 3.0)
-                        # =========================================================
                         avg_pa = l7_pa / juegos_jugados
-                        if avg_pa <= 3.0:
-                            continue  # Descartado: No promedia suficientes turnos
+                        if avg_pa <= 3.0: continue
                             
-                        # =========================================================
-                        # 2. PRODUCCIÓN Y FACTOR WHIP
-                        # =========================================================
                         hrr_total_l7 = l7_h + l7_r + l7_rbi
                         avg_hrr = hrr_total_l7 / juegos_jugados
                         
-                        if opp_whip == 0: opp_whip = 1.30
-                        factor_whip = opp_whip / 1.30
-                        
+                        factor_whip = opp_whip / 1.30 if opp_whip > 0 else 1.0
                         proy_hrr = avg_hrr * factor_whip
                         
-                        # =========================================================
-                        # 3. CÁLCULO DE PROBABILIDAD POISSON (OVER 1.5)
-                        # =========================================================
-                        # Probabilidad de hacer 2 o más
                         prob_exacta = 1 - poisson.cdf(1, proy_hrr)
                         prob_pct = int(round(prob_exacta * 100))
                         
                         eval_str = "⏳ Pendiente"
                         if g_status in ['Final', 'Game Over']:
-                            if pa_hoy_real == 0:
-                                eval_str = "🚫 No jugó"
+                            if pa_hoy_real == 0: eval_str = "🚫 No jugó"
                             else:
-                                if hrr_hoy_real >= 2:
-                                    eval_str = f"✅ Acierto ({hrr_hoy_real} H+R+RBI)"
-                                else:
-                                    eval_str = f"❌ Fallo ({hrr_hoy_real} H+R+RBI)"
+                                if hrr_hoy_real >= 2: eval_str = f"✅ Acierto ({hrr_hoy_real} H+R+RBI)"
+                                else: eval_str = f"❌ Fallo ({hrr_hoy_real} H+R+RBI)"
                                     
                         hrr_data.append({
                             "⚾ Bateador": b_name,
@@ -382,18 +380,20 @@ def get_hrr_hunters(fecha_hoy):
                             "prob_exacta": prob_exacta,
                             "📝 Evaluación": eval_str
                         })
-                        
                     except Exception:
-                        continue # Evitamos que el error de un jugador detenga todo
-                        
+                        continue # Si un bateador falla (ej. datos corruptos), pasa al siguiente
+
+        # ==========================================
+        # ORDENAMIENTO Y CORTE SEGURO
+        # ==========================================
+        if not hrr_data: return [] # Si de verdad nadie pasó, devuelve vacío sin romper
+        
         hrr_data.sort(key=lambda x: x['prob_exacta'], reverse=True)
         top_4 = hrr_data[:4]
         
         nuevo_top4 = []
         for r in top_4:
             es_alta_seg = False
-            
-            # 🌟 ESTRELLA PREMIUM: Probabilidad Poisson >= 65%
             if r["📉 Probabilidad"] >= 65:
                 es_alta_seg = True
                 
@@ -413,7 +413,7 @@ def get_hrr_hunters(fecha_hoy):
             
         return nuevo_top4
     except Exception as e:
-        # st.error(f"Error en HRR: {e}") # Descomenta esto temporalmente si necesitas ver el error en pantalla
+        # El único momento donde esto se ejecutará es si la API se cae por completo.
         return []
         
 def get_strikeout_hunters(fecha_hoy):
