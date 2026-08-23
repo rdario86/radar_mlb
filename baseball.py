@@ -341,7 +341,9 @@ def get_hrr_hunters(fecha_hoy):
                                 pa_hoy_real = int(gs.get('plateAppearances', 0))
                                 hrr_hoy_real = int(gs.get('hits', 0)) + int(gs.get('runs', 0)) + int(gs.get('rbi', 0))
                         
-                        # Filtro de volumen
+                        # =========================================================
+                        # FILTRO 1: VOLUMEN DE TURNOS (PA > 3.0)
+                        # =========================================================
                         avg_pa = l7_pa / juegos_jugados
                         if avg_pa <= 3.0: continue
                             
@@ -350,7 +352,17 @@ def get_hrr_hunters(fecha_hoy):
                         
                         factor_whip = opp_whip / 1.30 if opp_whip > 0 else 1.0
                         proy_hrr = avg_hrr * factor_whip
+
+                        # =========================================================
+                        # FILTRO 2: SELECCIÓN INICIAL (RANGO 1.50 - 2.50)
+                        # =========================================================
+                        # Descartamos anomalías (techo) y bateadores fríos (piso)
+                        if proy_hrr < 1.50 or proy_hrr > 2.50:
+                            continue 
                         
+                        # =========================================================
+                        # CÁLCULO DE PROBABILIDAD POISSON (OVER 1.5)
+                        # =========================================================
                         prob_exacta = 1 - poisson.cdf(1, proy_hrr)
                         prob_pct = int(round(prob_exacta * 100))
                         
@@ -384,7 +396,10 @@ def get_hrr_hunters(fecha_hoy):
         nuevo_top4 = []
         for r in top_4:
             es_alta_seg = False
-            if r["📉 Probabilidad"] >= 53:
+            
+            # 🌟 ESTRELLA PREMIUM: Probabilidad Poisson >= 65%
+            # Reservada solo para proyecciones por encima de 2.22
+            if r["📉 Probabilidad"] >= 65:
                 es_alta_seg = True
                 
             nombre_bateador = f"⭐ {r['⚾ Bateador']}" if es_alta_seg else r['⚾ Bateador']
@@ -1428,8 +1443,8 @@ if st.session_state.df_mlb is not None:
         st.markdown("#### 🚀 Radar de Producción (Hits + Carreras + Impulsadas)")
         st.markdown("Proyecta si un bateador superará el **Over 1.5 en H+R+RBI**.")
         
-        st.markdown("**🛡️ El Embudo de Volumen:**")
-        st.markdown("Para garantizar oportunidades reales, el sistema descarta instantáneamente a cualquier jugador que promedie **3.0 turnos (PA) o menos** en sus últimos 7 juegos (permitiendo días de descanso ocasionales sin penalizar la evaluación).")
+        st.markdown("**🛡️ El Embudo de Proyección (1.50 - 2.50):**")
+        st.markdown("El radar escanea a todos los bateadores con volumen de juego (>3.0 PA) pero solo lleva a la tabla final a aquellos cuya proyección matemática ajustada caiga estrictamente entre **1.50 y 2.50 H+R+RBI**. Esto filtra tanto a los bateadores fríos como a las anomalías estadísticas insostenibles, garantizando consistencia.")
 
         st.markdown("**⭐ Selección Premium (Alta Seguridad):**")
         st.markdown("* **📈 Multiplicador WHIP:** La proyección matemática base del bateador se multiplica usando el WHIP del abridor rival contra la constante de la liga (1.30).")
