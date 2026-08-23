@@ -578,6 +578,14 @@ def get_strikeout_hunters(fecha_hoy):
 
                 prob_pct = int(round(prob_exacta * 100))
 
+                # =========================================================
+                # NUEVO FILTRO GLOBAL DE K/9 (EL EMBUDO MAESTRO)
+                # =========================================================
+                if "Under" in tipo_jugada and k9 >= 8.0:
+                    continue
+                if "Over" in tipo_jugada and k9 < 9.0:
+                    continue
+
                 eval_str = "⏳ Pendiente"
                 if g_status in ['Final', 'Game Over']:
                     if outs_hoy_real == 0:
@@ -599,24 +607,23 @@ def get_strikeout_hunters(fecha_hoy):
                     "prob_pct": prob_pct,
                     "prob_exacta": prob_exacta,
                     "📝 Evaluación": eval_str,
-                    "outs_avg": avg_outs_redondeado # <--- VARIABLE INTERNA PARA AUDITAR EL TECHO DE OUTS
+                    "outs_avg": avg_outs_redondeado
                 })
 
         pitchers_data.sort(key=lambda x: x['prob_exacta'], reverse=True)
-        top_4 = pitchers_data[:4]
+        top_4 = pitchers_data[:4] # Traerá máximo 4, pero si pasaron menos por el embudo, traerá esos.
 
         nuevo_top4 = []
         for r in top_4:
             ip_val = float(r["⏱️ Proy. IP"])
-            k9_val = float(r["🔥 K/9 (L7)"])
             outs_val = r["outs_avg"]
             
             es_alta_seg = False
             
-            # 🌟 FILTRO DINÁMICO DE ESTRELLA (ASIMÉTRICO Y CON ESCUDO K/9)
+            # 🌟 FILTRO DINÁMICO DE ESTRELLA (Sin K/9, ya se filtró globalmente)
             if "Under" in r["tipo_jugada"]:
-                # Under: Exigimos 70%, la Correa Corta (<= 12 outs) Y Escudo K/9 (< 9.0)
-                if r["prob_pct"] >= 70 and outs_val <= 12 and k9_val < 9.0:
+                # Under: Exigimos 70% y la Correa Corta (<= 12 outs)
+                if r["prob_pct"] >= 70 and outs_val <= 12:
                     es_alta_seg = True
             else: 
                 # Over: Bajamos la guardia al 60% y exigimos volumen de élite (> 5.0 IP)
@@ -630,7 +637,7 @@ def get_strikeout_hunters(fecha_hoy):
                 "👕 Equipo": r["👕 Equipo"],
                 "⚔️ Rival": r["⚔️ Rival"],
                 "⏱️ Proy. IP": r["⏱️ Proy. IP"],
-                "🔥 K/9 (L7)": f"{k9_val:.1f}",  
+                "🔥 K/9 (L7)": r["🔥 K/9 (L7)"],  
                 "🔮 Proy. K": r["k_proyectados"],
                 "🎯 Jugada": r["tipo_jugada"],
                 "📉 Probabilidad": f"{r['prob_pct']}%",
