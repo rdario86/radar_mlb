@@ -354,10 +354,10 @@ def get_hrr_hunters(fecha_hoy):
                         proy_hrr = avg_hrr * factor_whip
 
                         # =========================================================
-                        # FILTRO 2: SELECCIÓN INICIAL (RANGO 1.50 - 2.50)
+                        # FILTRO 2: SELECCIÓN INICIAL (RANGO 1.50 - 2.25)
                         # =========================================================
                         # Descartamos anomalías (techo) y bateadores fríos (piso)
-                        if proy_hrr < 1.50 or proy_hrr > 2.50:
+                        if proy_hrr < 1.50 or proy_hrr > 2.25:
                             continue 
                         
                         # =========================================================
@@ -887,7 +887,7 @@ if st.session_state.df_mlb is not None:
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📅 Cartelera del Día",
     "🔥 Caza-Ponches",
-    "🔹 Caza-HCI",
+    "🔹 Caza-H+R+RBI",
     "🧮 Calculadora +EV",
     "📊 Auditoría Semanal",
     "🔬 Lupa de Pitcheo",
@@ -1443,8 +1443,8 @@ if st.session_state.df_mlb is not None:
         st.markdown("#### 🚀 Radar de Producción (Hits + Carreras + Impulsadas)")
         st.markdown("Proyecta si un bateador superará el **Over 1.5 en H+R+RBI**.")
         
-        st.markdown("**🛡️ El Embudo de Proyección (1.50 - 2.50):**")
-        st.markdown("El radar escanea a todos los bateadores con volumen de juego (>3.0 PA) pero solo lleva a la tabla final a aquellos cuya proyección matemática ajustada caiga estrictamente entre **1.50 y 2.50 H+R+RBI**. Esto filtra tanto a los bateadores fríos como a las anomalías estadísticas insostenibles, garantizando consistencia.")
+        st.markdown("**🛡️ El Embudo de Proyección (1.50 - 2.25):**")
+        st.markdown("El radar escanea a todos los bateadores con volumen de juego (>3.0 PA) pero solo lleva a la tabla final a aquellos cuya proyección matemática ajustada caiga estrictamente entre **1.50 y 2.25 H+R+RBI**. Esto filtra tanto a los bateadores fríos como a las anomalías estadísticas insostenibles, creando una ventana perfecta de consistencia.")
 
         st.markdown("**⭐ Selección Premium (Alta Seguridad):**")
         st.markdown("* **📈 Multiplicador WHIP:** La proyección matemática base del bateador se multiplica usando el WHIP del abridor rival contra la constante de la liga (1.30).")
