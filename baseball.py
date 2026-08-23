@@ -1441,11 +1441,14 @@ if st.session_state.df_mlb is not None:
         st.markdown("---")
 
         st.markdown("#### 🚀 Radar de Producción (Hits + Carreras + Impulsadas)")
-        st.markdown("Proyecta si un bateador superará el **Over 1.5 en H+R+RBI**.")
+        st.markdown("Proyecta si un bateador superará la línea de **Over 1.5 en H+R+RBI** basándose en su rendimiento reciente y la vulnerabilidad del lanzador.")
         
+        st.markdown("**🛡️ El Embudo de Volumen:**")
+        st.markdown("Para garantizar oportunidades reales, el sistema descarta instantáneamente a cualquier jugador que promedie **3.0 turnos (PA) o menos** en sus últimos 7 juegos. Esto permite incluir a bateadores élite que hayan recibido un día de descanso reciente sin que el modelo los penalice.")
+
         st.markdown("**🛡️ El Embudo de Proyección (1.50 - 2.25):**")
-        st.markdown("El radar escanea a todos los bateadores con volumen de juego (>3.0 PA) pero solo lleva a la tabla final a aquellos cuya proyección matemática ajustada caiga estrictamente entre **1.50 y 2.25 H+R+RBI**. Esto filtra tanto a los bateadores fríos como a las anomalías estadísticas insostenibles, creando una ventana perfecta de consistencia.")
+        st.markdown("El radar escanea a todos los bateadores con volumen de juego, pero solo lleva a la tabla final del Top 4 a aquellos cuya proyección matemática ajustada caiga estrictamente entre **1.50 y 2.25 H+R+RBI**. Esto filtra desde la raíz tanto a los bateadores fríos (el piso) como a las anomalías estadísticas insostenibles (el techo), creando una ventana perfecta de consistencia pura para tu evaluación visual.")
 
         st.markdown("**⭐ Selección Premium (Alta Seguridad):**")
-        st.markdown("* **📈 Multiplicador WHIP:** La proyección matemática base del bateador se multiplica usando el WHIP del abridor rival contra la constante de la liga (1.30).")
-        st.markdown("* **📉 Probabilidad Poisson (>=53%):** El jugador recibe la estrella premium si el modelo dicta un 53% o más de probabilidades estadísticas. Este umbral está calibrado para cazar bateadores sólidos y consistentes que proyecten al menos 1.78 unidades de H+R+RBI en el juego, evitando exigir números irreales.")
+        st.markdown("* **📈 Multiplicador WHIP:** La proyección matemática base del bateador se pondera utilizando el WHIP del abridor rival comparado con el promedio de la liga (1.30).")
+        st.markdown("* **📉 Probabilidad Poisson (>=65%):** El jugador recibe la codiciada estrella premium (⭐) solo si la distribución de Poisson le otorga un 65% o más de probabilidades matemáticas de cubrir la línea. Dado el techo estricto del embudo (2.25), esta estrella es extremadamente exclusiva y solo se encenderá cuando el bateador logre entrar en la minúscula ventana de la perfección matemática (proyectando entre 2.22 y 2.25).")
