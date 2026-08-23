@@ -384,7 +384,7 @@ def get_hrr_hunters(fecha_hoy):
         nuevo_top4 = []
         for r in top_4:
             es_alta_seg = False
-            if r["📉 Probabilidad"] >= 65:
+            if r["📉 Probabilidad"] >= 53:
                 es_alta_seg = True
                 
             nombre_bateador = f"⭐ {r['⚾ Bateador']}" if es_alta_seg else r['⚾ Bateador']
@@ -1433,4 +1433,4 @@ if st.session_state.df_mlb is not None:
 
         st.markdown("**⭐ Selección Premium (Alta Seguridad):**")
         st.markdown("* **📈 Multiplicador WHIP:** La proyección matemática base del bateador se multiplica usando el WHIP del abridor rival contra la constante de la liga (1.30).")
-        st.markdown("* **📉 Probabilidad Poisson (>=65%):** El jugador recibe la estrella premium si el modelo de distribución dictamina que tiene un 65% o más de probabilidades estadísticas de registrar 2 o más unidades de H+R+RBI en el juego.")
+        st.markdown("* **📉 Probabilidad Poisson (>=53%):** El jugador recibe la estrella premium si el modelo dicta un 53% o más de probabilidades estadísticas. Este umbral está calibrado para cazar bateadores sólidos y consistentes que proyecten al menos 1.78 unidades de H+R+RBI en el juego, evitando exigir números irreales.")
