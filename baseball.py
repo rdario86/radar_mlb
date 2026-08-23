@@ -259,7 +259,6 @@ def get_hrr_hunters(fecha_hoy):
             if juego.get('status', '') in ['Postponed', 'Cancelled']: continue
             g_status = juego.get('status', '')
             
-            # Extraemos lanzadores y sus WHIPs con valores por defecto hiper-seguros
             p_local, p_visita = get_starting_pitchers(juego)
             whip_l = 1.30; whip_v = 1.30
             
@@ -280,39 +279,32 @@ def get_hrr_hunters(fecha_hoy):
                 (juego.get('home_id'), juego.get('home_name', 'Local'), whip_v, juego.get('away_name', 'Visitante'))
             ]
             
-            anio_str = str(fecha_hoy)[:4]
-            
             for team_id, team_name, opp_whip, opp_team in matchups:
                 if not team_id: continue
                 
                 try:
-                    # Intento de traer roster
-                    team_info = statsapi.get('teams', {'teamId': team_id, 'season': anio_str, 'hydrate': 'roster'})
-                    if not team_info or 'teams' not in team_info or not team_info['teams']: continue
-                    
-                    roster_data = team_info['teams'][0].get('roster', {})
-                    if not roster_data: continue
-                    
-                    roster = roster_data.get('roster', [])
+                    # 1. Obtenemos el roster de forma más directa y segura
+                    roster_raw = statsapi.get('team_roster', {'teamId': team_id})
+                    roster = roster_raw.get('roster', [])
                     if not roster: continue
-                except Exception:
-                    continue # Salta este equipo, pero no detiene el loop general
-                
-                for player in roster:
-                    try:
+                    
+                    # 2. Agrupamos todos los IDs de los bateadores
+                    batter_ids = []
+                    for player in roster:
                         pos = player.get('position', {}).get('abbreviation', '')
-                        if pos == 'P': continue 
-                        
-                        person = player.get('person', {})
-                        batter_id = person.get('id')
-                        b_name = person.get('fullName', 'Unknown')
-                        
-                        if not batter_id: continue
-                        
-                        raw_data = statsapi.get('people', {'personIds': batter_id, 'hydrate': 'stats(group=[hitting],type=[gameLog])'})
-                        if not raw_data or 'people' not in raw_data or not raw_data['people']: continue
-                        person_info = raw_data['people'][0]
-                        
+                        if pos != 'P': # Si no es pitcher, lo guardamos
+                            b_id = player.get('person', {}).get('id')
+                            if b_id: batter_ids.append(str(b_id))
+                            
+                    if not batter_ids: continue
+                    
+                    # 3. MEGA-LLAMADA (BATCH): Pedimos las stats de TODOS de un solo golpe
+                    ids_str = ",".join(batter_ids)
+                    raw_data = statsapi.get('people', {'personIds': ids_str, 'hydrate': 'stats(group=[hitting],type=[gameLog])'})
+                    
+                    personas = raw_data.get('people', [])
+                    for person_info in personas:
+                        b_name = person_info.get('fullName', 'Unknown')
                         stats_blocks = person_info.get('stats', [])
                         if not stats_blocks: continue
                         
@@ -349,6 +341,7 @@ def get_hrr_hunters(fecha_hoy):
                                 pa_hoy_real = int(gs.get('plateAppearances', 0))
                                 hrr_hoy_real = int(gs.get('hits', 0)) + int(gs.get('runs', 0)) + int(gs.get('rbi', 0))
                         
+                        # Filtro de volumen
                         avg_pa = l7_pa / juegos_jugados
                         if avg_pa <= 3.0: continue
                             
@@ -380,13 +373,10 @@ def get_hrr_hunters(fecha_hoy):
                             "prob_exacta": prob_exacta,
                             "📝 Evaluación": eval_str
                         })
-                    except Exception:
-                        continue # Si un bateador falla (ej. datos corruptos), pasa al siguiente
-
-        # ==========================================
-        # ORDENAMIENTO Y CORTE SEGURO
-        # ==========================================
-        if not hrr_data: return [] # Si de verdad nadie pasó, devuelve vacío sin romper
+                except Exception:
+                    pass # Si hay error con un equipo, sigue con el resto
+        
+        if not hrr_data: return [] 
         
         hrr_data.sort(key=lambda x: x['prob_exacta'], reverse=True)
         top_4 = hrr_data[:4]
@@ -413,7 +403,6 @@ def get_hrr_hunters(fecha_hoy):
             
         return nuevo_top4
     except Exception as e:
-        # El único momento donde esto se ejecutará es si la API se cae por completo.
         return []
         
 def get_strikeout_hunters(fecha_hoy):
