@@ -259,7 +259,7 @@ def get_hrr_hunters(fecha_hoy):
             if juego.get('status', '') in ['Postponed', 'Cancelled']: continue
             g_status = juego.get('status', '')
             
-            # Extraemos lanzadores y sus WHIPs
+            # Extraemos lanzadores y sus WHIPs (Manejo robusto)
             p_local, p_visita = get_starting_pitchers(juego)
             whip_l = 1.30; whip_v = 1.30
             
@@ -270,6 +270,7 @@ def get_hrr_hunters(fecha_hoy):
                 try: whip_v, _ = get_pitcher_whip(p_visita, fecha_hoy)
                 except: pass
                 
+            # Mapeo: Bateadores del Visitante vs Abridor Local // Bateadores del Local vs Abridor Visitante
             matchups = [
                 (juego.get('away_id'), juego.get('away_name'), whip_l, juego.get('home_name')),
                 (juego.get('home_id'), juego.get('home_name'), whip_v, juego.get('away_name'))
@@ -280,21 +281,28 @@ def get_hrr_hunters(fecha_hoy):
             for team_id, team_name, opp_whip, opp_team in matchups:
                 if not team_id: continue
                 
-                # Obtenemos el roster activo completo para no depender de lineups tardíos
+                # Obtenemos el roster activo
                 try:
                     team_info = statsapi.get('teams', {'teamId': team_id, 'season': anio_str, 'hydrate': 'roster'})
-                    roster = team_info['teams'][0]['roster']['roster']
-                except: continue
+                    if 'teams' not in team_info or not team_info['teams']: continue
+                    
+                    roster_data = team_info['teams'][0].get('roster', {})
+                    roster = roster_data.get('roster', [])
+                    if not roster: continue
+                except Exception: continue
                 
                 for player in roster:
-                    if player['position']['abbreviation'] == 'P': continue # Descartamos lanzadores
+                    # Descartamos a los lanzadores para evaluar solo bateadores
+                    if player.get('position', {}).get('abbreviation') == 'P': continue 
                     
-                    batter_id = player['person']['id']
-                    b_name = player['person']['fullName']
+                    batter_id = player.get('person', {}).get('id')
+                    b_name = player.get('person', {}).get('fullName')
+                    if not batter_id: continue
                     
                     try:
                         raw_data = statsapi.get('people', {'personIds': batter_id, 'hydrate': 'stats(group=[hitting],type=[gameLog])'})
-                        person_info = raw_data.get('people', [{}])[0]
+                        if 'people' not in raw_data or not raw_data['people']: continue
+                        person_info = raw_data['people'][0]
                         
                         stats_blocks = person_info.get('stats', [])
                         all_splits = []
@@ -302,12 +310,14 @@ def get_hrr_hunters(fecha_hoy):
                             if block.get('type', {}).get('displayName') == 'gameLog':
                                 all_splits.extend(block.get('splits', []))
                                 
+                        # Filtramos juegos anteriores a la fecha seleccionada
                         valid_splits = [s for s in all_splits if s.get('date', '') < fecha_hoy]
+                        if not valid_splits: continue # No hay historial reciente
+                        
                         valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
                         
                         last_7 = valid_splits[:7]
                         juegos_jugados = len(last_7)
-                        if juegos_jugados == 0: continue
                         
                         l7_pa = 0; l7_h = 0; l7_r = 0; l7_rbi = 0
                         pa_hoy_real = 0; hrr_hoy_real = 0
@@ -326,11 +336,11 @@ def get_hrr_hunters(fecha_hoy):
                                 hrr_hoy_real = int(gs.get('hits', 0)) + int(gs.get('runs', 0)) + int(gs.get('rbi', 0))
                         
                         # =========================================================
-                        # 1. EL EMBUDO MAESTRO OFENSIVO: Filtro de Volumen de Turnos
+                        # 1. EL EMBUDO MAESTRO OFENSIVO: Filtro de Volumen de Turnos (PA > 3.0)
                         # =========================================================
                         avg_pa = l7_pa / juegos_jugados
                         if avg_pa <= 3.0:
-                            continue  # Descartado si no garantiza turnos al bate
+                            continue  # Descartado: No promedia suficientes turnos
                             
                         # =========================================================
                         # 2. PRODUCCIÓN Y FACTOR WHIP
@@ -346,7 +356,7 @@ def get_hrr_hunters(fecha_hoy):
                         # =========================================================
                         # 3. CÁLCULO DE PROBABILIDAD POISSON (OVER 1.5)
                         # =========================================================
-                        # Poisson evalúa la probabilidad de hacer 2 o más (1 - prob de hacer 0 o 1)
+                        # Probabilidad de hacer 2 o más
                         prob_exacta = 1 - poisson.cdf(1, proy_hrr)
                         prob_pct = int(round(prob_exacta * 100))
                         
@@ -374,7 +384,7 @@ def get_hrr_hunters(fecha_hoy):
                         })
                         
                     except Exception:
-                        continue
+                        continue # Evitamos que el error de un jugador detenga todo
                         
         hrr_data.sort(key=lambda x: x['prob_exacta'], reverse=True)
         top_4 = hrr_data[:4]
@@ -403,6 +413,7 @@ def get_hrr_hunters(fecha_hoy):
             
         return nuevo_top4
     except Exception as e:
+        # st.error(f"Error en HRR: {e}") # Descomenta esto temporalmente si necesitas ver el error en pantalla
         return []
         
 def get_strikeout_hunters(fecha_hoy):
