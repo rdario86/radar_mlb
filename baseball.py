@@ -1078,42 +1078,46 @@ if st.session_state.df_mlb is not None:
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
                 
     with tab3:
-        st.markdown("### 🔹 Radar de Hits: Probabilidad de 1+ Imparables")
-        if st.button("🔎 Buscar Bateadores con 1+ Hits (Top 4)", type="primary", use_container_width=True):
-            with st.spinner("Calculando probabilidades de dar hits..."):
-                resultados_hits = get_hit_hunters(anio_sel, st.session_state.fecha_hoy)
-                if resultados_hits:
-                    st.session_state[f"resultados_hits_{st.session_state.fecha_hoy}"] = resultados_hits
+        st.markdown("### 🚀 Radar de Producción (Hits + Anotadas + Impulsadas)")
+        st.markdown("Busca a los bateadores con mayor probabilidad de cubrir la línea **Over 1.5 H+R+RBI**, ajustado por su volumen de turnos y el WHIP del lanzador rival.")
+        
+        if st.button("🔎 Buscar Bateadores Premium (Top 4)", type="primary", use_container_width=True):
+            with st.spinner("Calculando proyecciones ofensivas y multiplicadores WHIP..."):
+                # ¡AQUÍ ESTABA EL ERROR! Ahora llamamos a get_hrr_hunters
+                resultados_hrr = get_hrr_hunters(st.session_state.fecha_hoy) 
+                
+                if resultados_hrr:
+                    st.session_state[f"resultados_hrr_{st.session_state.fecha_hoy}"] = resultados_hrr
                 else:
-                    st.session_state[f"resultados_hits_{st.session_state.fecha_hoy}"] = None
-                    st.warning("No se encontraron bateadores con datos suficientes para hoy.")
+                    st.session_state[f"resultados_hrr_{st.session_state.fecha_hoy}"] = None
+                    st.warning("No se encontraron bateadores con proyecciones válidas para hoy.")
 
-        clave_hits = f"resultados_hits_{st.session_state.fecha_hoy}"
-        if clave_hits in st.session_state and st.session_state[clave_hits] is not None:
-            df_hits = pd.DataFrame(st.session_state[clave_hits])
-            df_hits_estilizado = df_hits.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
-            st.dataframe(df_hits_estilizado, use_container_width=True, hide_index=True)
+        clave_hrr = f"resultados_hrr_{st.session_state.fecha_hoy}"
+        if clave_hrr in st.session_state and st.session_state[clave_hrr] is not None:
+            df_hrr = pd.DataFrame(st.session_state[clave_hrr])
+            df_hrr_estilizado = df_hrr.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
+            st.dataframe(df_hrr_estilizado, use_container_width=True, hide_index=True)
 
-            excel_hits = convertir_df_a_excel(df_hits, "Hits")
+            excel_hrr = convertir_df_a_excel(df_hrr, "Produccion_Ofensiva")
             st.download_button(
-                label="📥 Descargar Caza-Hits (Excel)",
-                data=excel_hits,
-                file_name=f"caza_hits_{st.session_state.fecha_hoy}.xlsx",
+                label="📥 Descargar Radar (Excel)",
+                data=excel_hrr,
+                file_name=f"caza_hrr_{st.session_state.fecha_hoy}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
-            total_evaluados = sum(1 for e in df_hits['📝 Evaluación'] if '✅' in e or '❌' in e)
-            aciertos = sum(1 for e in df_hits['📝 Evaluación'] if '✅' in e)
+            total_evaluados = sum(1 for e in df_hrr['📝 Evaluación'] if '✅' in e or '❌' in e)
+            aciertos = sum(1 for e in df_hrr['📝 Evaluación'] if '✅' in e)
 
             if total_evaluados > 0:
                 efectividad = (aciertos / total_evaluados) * 100
-                st.markdown("### 📊 Rendimiento Caza-Hits (1+ Imparables)")
+                st.markdown("### 📊 Rendimiento del Radar H+R+RBI")
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Bateadores Evaluados", total_evaluados)
-                c2.metric("Aciertos (1+ Hits)", aciertos)
+                c2.metric("Aciertos (Over 1.5)", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
-        elif clave_hits not in st.session_state:
-            st.info("Presiona el botón para buscar bateadores con alta probabilidad de 1+ hits.")
+        elif clave_hrr not in st.session_state:
+            st.info("Presiona el botón para buscar bateadores con alta probabilidad de explotar la ofensiva.")
 
     with tab4:
         st.markdown("### 🧮 Calculadora de Valor Esperado (+EV)")
