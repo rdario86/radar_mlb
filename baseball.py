@@ -560,7 +560,7 @@ def get_strikeout_hunters(fecha_hoy):
                 innings_enteros = avg_outs_redondeado // 3
                 outs_sobrantes = avg_outs_redondeado % 3
                 
-                # FILTRO DE VOLUMEN: Solo piso (>= 3.0 IP)
+                # FILTRO DE VOLUMEN: Solo piso (>= 3.0 IP o 9 outs)
                 if avg_outs_redondeado < 9:
                     continue
                 
@@ -573,46 +573,34 @@ def get_strikeout_hunters(fecha_hoy):
                 k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1)
                 
                 # -------------------------------------------------------------
-                # NUEVA LÍNEA DINÁMICA: AJUSTE ESTRICTO A LA PROYECCIÓN
+                # NUEVA LÍNEA DINÁMICA: EXCLUSIVO PARA OVERS
                 # -------------------------------------------------------------
                 k_proy_int = int(round(proj_k))
                 
-                if k_proy_int <= 2:
-                    tipo_jugada = "Under 2.5"; limite_eval = 2
-                    prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
-                elif k_proy_int == 3:
-                    tipo_jugada = "Under 3.5"; limite_eval = 3
-                    prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
-                elif k_proy_int == 4:
-                    tipo_jugada = "Under 4.5"; limite_eval = 4
-                    prob_exacta = poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 1.0
+                # Si proyecta 4 o menos, lo descartamos por completo (Eliminamos el Under)
+                if k_proy_int <= 4:
+                    continue
                 elif k_proy_int == 5:
                     tipo_jugada = "Over 4.5"; limite_eval = 4
-                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
                 elif k_proy_int == 6:
                     tipo_jugada = "Over 5.5"; limite_eval = 5
-                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
                 elif k_proy_int == 7:
                     tipo_jugada = "Over 6.5"; limite_eval = 6
-                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
                 elif k_proy_int == 8:
                     tipo_jugada = "Over 7.5"; limite_eval = 7
-                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
                 elif k_proy_int == 9:
                     tipo_jugada = "Over 8.5"; limite_eval = 8
-                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
                 else: # 10 o más
                     tipo_jugada = "Over 9.5"; limite_eval = 9
-                    prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
 
+                prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
                 prob_pct = int(round(prob_exacta * 100))
 
                 # =========================================================
-                # NUEVO FILTRO GLOBAL DE K/9 (EL EMBUDO MAESTRO)
+                # FILTRO GLOBAL DE K/9 (EL EMBUDO MAESTRO PARA OVERS)
                 # =========================================================
-                if "Under" in tipo_jugada and k9 >= 8.0:
-                    continue
-                if "Over" in tipo_jugada and k9 < 9.0:
+                # Si vamos al Over, el pitcher TIENE que ser ponchador (K/9 >= 9.0)
+                if k9 < 9.0:
                     continue
 
                 eval_str = "⏳ Pendiente"
@@ -620,10 +608,7 @@ def get_strikeout_hunters(fecha_hoy):
                     if outs_hoy_real == 0:
                         eval_str = "🚫 No lanzó"
                     else:
-                        if "Under" in tipo_jugada:
-                            eval_str = f"✅ Acierto (Under: {ks_hoy_real} Ks)" if ks_hoy_real <= limite_eval else f"❌ Fallo (Over: {ks_hoy_real} Ks)"
-                        else:
-                            eval_str = f"✅ Acierto (Over: {ks_hoy_real} Ks)" if ks_hoy_real > limite_eval else f"❌ Fallo (Under: {ks_hoy_real} Ks)"
+                        eval_str = f"✅ Acierto (Over: {ks_hoy_real} Ks)" if ks_hoy_real > limite_eval else f"❌ Fallo (Under: {ks_hoy_real} Ks)"
 
                 pitchers_data.append({
                     "⚾ Abridor": p_name,
@@ -631,8 +616,8 @@ def get_strikeout_hunters(fecha_hoy):
                     "⚔️ Rival": opp_name,
                     "⏱️ Proy. IP": ip_pantalla,
                     "🔥 K/9 (L7)": k9,
-                    "k_proyectados": k_proy_int, 
-                    "tipo_jugada": tipo_jugada,
+                    "🔮 Proy. K": k_proy_int, 
+                    "🎯 Jugada": tipo_jugada,
                     "prob_pct": prob_pct,
                     "prob_exacta": prob_exacta,
                     "📝 Evaluación": eval_str,
@@ -640,24 +625,16 @@ def get_strikeout_hunters(fecha_hoy):
                 })
 
         pitchers_data.sort(key=lambda x: x['prob_exacta'], reverse=True)
-        top_4 = pitchers_data[:4] # Traerá máximo 4, pero si pasaron menos por el embudo, traerá esos.
+        top_4 = pitchers_data[:4]
 
         nuevo_top4 = []
         for r in top_4:
             ip_val = float(r["⏱️ Proy. IP"])
-            outs_val = r["outs_avg"]
-            
             es_alta_seg = False
             
-            # 🌟 FILTRO DINÁMICO DE ESTRELLA (Sin K/9, ya se filtró globalmente)
-            if "Under" in r["tipo_jugada"]:
-                # Under: Exigimos 70% y la Correa Corta (<= 12 outs)
-                if r["prob_pct"] >= 70 and outs_val <= 12:
-                    es_alta_seg = True
-            else: 
-                # Over: Bajamos la guardia al 60% y exigimos volumen de élite (>= 5.0 IP)
-                if r["prob_pct"] >= 60 and ip_val >= 5.0:
-                    es_alta_seg = True
+            # 🌟 ESTRELLA PREMIUM: SOLO OVERS (>= 65% Poisson y >= 5.0 IP)
+            if r["prob_pct"] >= 65 and ip_val >= 5.0:
+                es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
 
@@ -667,8 +644,8 @@ def get_strikeout_hunters(fecha_hoy):
                 "⚔️ Rival": r["⚔️ Rival"],
                 "⏱️ Proy. IP": r["⏱️ Proy. IP"],
                 "🔥 K/9 (L7)": f"{float(r['🔥 K/9 (L7)']):.1f}",  
-                "🔮 Proy. K": r["k_proyectados"],
-                "🎯 Jugada": r["tipo_jugada"],
+                "🔮 Proy. K": r["🔮 Proy. K"],
+                "🎯 Jugada": r["🎯 Jugada"],
                 "📉 Probabilidad": f"{r['prob_pct']}%",
                 "📝 Evaluación": r["📝 Evaluación"]
             })
