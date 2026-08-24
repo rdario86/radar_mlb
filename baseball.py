@@ -632,9 +632,9 @@ def get_strikeout_hunters(fecha_hoy):
             es_alta_seg = False
             
             # =========================================================
-            # 🌟 ESTRELLA PREMIUM: SOLO OVERS (>= 60% Poisson y >= 5.0 IP)
+            # 🌟 ESTRELLA PREMIUM: SOLO OVERS (>= 62% Poisson y >= 5.0 IP)
             # =========================================================
-            if r["prob_pct"] >= 60 and ip_val >= 5.0:
+            if r["prob_pct"] >= 62 and ip_val >= 5.0:
                 es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
@@ -1413,7 +1413,7 @@ if st.session_state.df_mlb is not None:
         st.markdown("Para proteger el capital y evitar la volatilidad de apostar en contra del lanzador, el sistema **descarta automáticamente cualquier jugada de 'Under'**. Solo se procesan oportunidades de 'Over' (líneas de 4.5 en adelante), exigiendo un perfil ponchador de élite estricto de **$\ge$ 9.0 K/9**.")
 
         st.markdown("**⭐ Selección Premium (Alta Seguridad):**")
-        st.markdown("* **📉 El Candado de Ases (Poisson >= 60% + IP >= 5.0):** El lanzador recibe la estrella premium (⭐) solo si la distribución matemática le otorga un sólido 60% de cubrir su línea de 'Over', y además promedia un volumen de al menos **5.0 innings lanzados por salida**. Esto permite detectar un volumen consistente de abridores dominantes con alto K/9, eliminando a relevistas largos o lanzadores con restricciones de pitcheos.")
+        st.markdown("* **📉 El Candado de Ases (Poisson >= 62% + IP >= 5.0):** El lanzador recibe la estrella premium (⭐) solo si la distribución matemática le otorga un sólido 62% de cubrir su línea de 'Over', y además promedia un volumen de al menos **5.0 innings lanzados por salida**. Esto permite detectar un volumen consistente de abridores dominantes con alto K/9, eliminando a relevistas largos o lanzadores con restricciones de pitcheos.")
 
         st.markdown("---")
 
