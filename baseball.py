@@ -255,10 +255,13 @@ def get_hrr_hunters(fecha_hoy):
         if not juegos_hoy: return []
         
         hrr_data = []
+        anio_str = str(fecha_hoy)[:4]
+        
         for juego in juegos_hoy:
             if juego.get('status', '') in ['Postponed', 'Cancelled']: continue
             g_status = juego.get('status', '')
             
+            # 1. WHIP de los Abridores
             p_local, p_visita = get_starting_pitchers(juego)
             whip_l = 1.30; whip_v = 1.30
             
@@ -274,31 +277,49 @@ def get_hrr_hunters(fecha_hoy):
                     whip_v = float(w_temp) if w_temp else 1.30
                 except: pass
                 
+            # Añadimos el ID del equipo rival (opp_team_id) para buscar su bullpen
             matchups = [
-                (juego.get('away_id'), juego.get('away_name', 'Visitante'), whip_l, juego.get('home_name', 'Local')),
-                (juego.get('home_id'), juego.get('home_name', 'Local'), whip_v, juego.get('away_name', 'Visitante'))
+                (juego.get('away_id'), juego.get('away_name', 'Visitante'), whip_l, juego.get('home_name', 'Local'), juego.get('home_id')),
+                (juego.get('home_id'), juego.get('home_name', 'Local'), whip_v, juego.get('away_name', 'Visitante'), juego.get('away_id'))
             ]
             
-            for team_id, team_name, opp_whip, opp_team in matchups:
+            for team_id, team_name, opp_whip_sp, opp_team, opp_team_id in matchups:
                 if not team_id: continue
                 
+                # =========================================================
+                # 🛡️ NUEVO CANDADO: FACTOR BULLPEN (60% SP / 40% Equipo)
+                # =========================================================
+                team_whip = 1.30
                 try:
-                    # 1. Obtenemos el roster de forma más directa y segura
+                    # Buscamos el WHIP colectivo del equipo rival para simular el relevo
+                    t_data = statsapi.get('teams', {'teamId': opp_team_id, 'season': anio_str, 'hydrate': 'stats(group=[pitching],type=[season])'})
+                    stats_list = t_data.get('teams', [])[0].get('teamStats', [])
+                    for st in stats_list:
+                        if st.get('type', {}).get('displayName') == 'season':
+                            w_val = st.get('splits', [])[0].get('stat', {}).get('whip')
+                            if w_val: team_whip = float(w_val)
+                            break
+                except:
+                    pass
+                
+                # Multiplicador Ponderado
+                opp_whip = (opp_whip_sp * 0.60) + (team_whip * 0.40)
+                
+                try:
+                    # Obtenemos el roster de forma directa y masiva (Batching)
                     roster_raw = statsapi.get('team_roster', {'teamId': team_id})
                     roster = roster_raw.get('roster', [])
                     if not roster: continue
                     
-                    # 2. Agrupamos todos los IDs de los bateadores
                     batter_ids = []
                     for player in roster:
                         pos = player.get('position', {}).get('abbreviation', '')
-                        if pos != 'P': # Si no es pitcher, lo guardamos
+                        if pos != 'P': 
                             b_id = player.get('person', {}).get('id')
                             if b_id: batter_ids.append(str(b_id))
                             
                     if not batter_ids: continue
                     
-                    # 3. MEGA-LLAMADA (BATCH): Pedimos las stats de TODOS de un solo golpe
                     ids_str = ",".join(batter_ids)
                     raw_data = statsapi.get('people', {'personIds': ids_str, 'hydrate': 'stats(group=[hitting],type=[gameLog])'})
                     
@@ -341,28 +362,23 @@ def get_hrr_hunters(fecha_hoy):
                                 pa_hoy_real = int(gs.get('plateAppearances', 0))
                                 hrr_hoy_real = int(gs.get('hits', 0)) + int(gs.get('runs', 0)) + int(gs.get('rbi', 0))
                         
-                        # =========================================================
-                        # FILTRO 1: VOLUMEN DE TURNOS (PA > 3.0)
-                        # =========================================================
+                        # Filtro Base Oportunidades
                         avg_pa = l7_pa / juegos_jugados
                         if avg_pa <= 3.0: continue
                             
                         hrr_total_l7 = l7_h + l7_r + l7_rbi
                         avg_hrr = hrr_total_l7 / juegos_jugados
                         
+                        # Proyección con WHIP Ponderado
                         factor_whip = opp_whip / 1.30 if opp_whip > 0 else 1.0
                         proy_hrr = avg_hrr * factor_whip
 
                         # =========================================================
-                        # FILTRO 2: SELECCIÓN INICIAL (RANGO 1.50 - 2.25)
+                        # 🛡️ NUEVO CANDADO: RANGO HASTA 2.75
                         # =========================================================
-                        # Descartamos anomalías (techo) y bateadores fríos (piso)
-                        if proy_hrr < 1.50 or proy_hrr > 2.25:
+                        if proy_hrr < 1.50 or proy_hrr > 2.75:
                             continue 
                         
-                        # =========================================================
-                        # CÁLCULO DE PROBABILIDAD POISSON (OVER 1.5)
-                        # =========================================================
                         prob_exacta = 1 - poisson.cdf(1, proy_hrr)
                         prob_pct = int(round(prob_exacta * 100))
                         
@@ -385,7 +401,7 @@ def get_hrr_hunters(fecha_hoy):
                             "📝 Evaluación": eval_str
                         })
                 except Exception:
-                    pass # Si hay error con un equipo, sigue con el resto
+                    pass 
         
         if not hrr_data: return [] 
         
@@ -396,9 +412,10 @@ def get_hrr_hunters(fecha_hoy):
         for r in top_4:
             es_alta_seg = False
             
-            # 🌟 ESTRELLA PREMIUM: Probabilidad Poisson >= 65%
-            # Reservada solo para proyecciones por encima de 2.22
-            if r["📉 Probabilidad"] >= 65:
+            # =========================================================
+            # 🛡️ NUEVO CANDADO PREMIUM: >= 65% Poisson Y >= 4.0 Avg PA
+            # =========================================================
+            if r["📉 Probabilidad"] >= 65 and float(r["📊 Avg PA (L7)"]) >= 4.0:
                 es_alta_seg = True
                 
             nombre_bateador = f"⭐ {r['⚾ Bateador']}" if es_alta_seg else r['⚾ Bateador']
@@ -1444,9 +1461,9 @@ if st.session_state.df_mlb is not None:
         st.markdown("**🛡️ El Embudo de Volumen:**")
         st.markdown("Para garantizar oportunidades reales, el sistema descarta instantáneamente a cualquier jugador que promedie **3.0 turnos (PA) o menos** en sus últimos 7 juegos. Esto permite incluir a bateadores élite que hayan recibido un día de descanso reciente sin que el modelo los penalice.")
 
-        st.markdown("**🛡️ El Embudo de Proyección (1.50 - 2.25):**")
-        st.markdown("El radar escanea a todos los bateadores con volumen de juego, pero solo lleva a la tabla final del Top 4 a aquellos cuya proyección matemática ajustada caiga estrictamente entre **1.50 y 2.25 H+R+RBI**. Esto filtra desde la raíz tanto a los bateadores fríos (el piso) como a las anomalías estadísticas insostenibles (el techo), creando una ventana perfecta de consistencia pura para tu evaluación visual.")
+        st.markdown("**🛡️ El Embudo de Proyección (1.50 - 2.75):**")
+        st.markdown("El radar escanea a todos los bateadores con volumen de juego, pero solo lleva a la tabla final del Top 4 a aquellos cuya proyección caiga entre **1.50 y 2.75 H+R+RBI**. Esto limpia a los bateadores fríos pero le da espacio al modelo para cazar a la élite ofensiva.")
 
         st.markdown("**⭐ Selección Premium (Alta Seguridad):**")
-        st.markdown("* **📈 Multiplicador WHIP:** La proyección matemática base del bateador se pondera utilizando el WHIP del abridor rival comparado con el promedio de la liga (1.30).")
-        st.markdown("* **📉 Probabilidad Poisson (>=65%):** El jugador recibe la codiciada estrella premium (⭐) solo si la distribución de Poisson le otorga un 65% o más de probabilidades matemáticas de cubrir la línea. Dado el techo estricto del embudo (2.25), esta estrella es extremadamente exclusiva y solo se encenderá cuando el bateador logre entrar en la minúscula ventana de la perfección matemática (proyectando entre 2.22 y 2.25).")
+        st.markdown("* **📈 Multiplicador WHIP Ponderado:** La proyección se ajusta evaluando un WHIP combinado: **60% del Abridor Rival y 40% del Pitcheo Colectivo (Bullpen)**, evitando bloqueos tardíos en el juego.")
+        st.markdown("* **📉 Doble Candado (Poisson >= 65% + PA >= 4.0):** El jugador recibe la estrella premium (⭐) solo si las matemáticas le otorgan un 65% de cubrir la línea **Y** promedia al menos 4.0 apariciones al plato (PA), garantizando que pertenece al tope de la alineación ofensiva.")
