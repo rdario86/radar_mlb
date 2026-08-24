@@ -1416,19 +1416,14 @@ if st.session_state.df_mlb is not None:
 
         st.markdown("---")
 
-        st.markdown("#### 🔥 Caza-Ponches (Líneas Alternativas Ajustadas)")
-        st.markdown("El radar escanea la proyección matemática del lanzador y le asigna una línea estricta basada en su proyección entera (ej: proyecta 3 Ks -> Under 3.5; proyecta 6 Ks -> Over 5.5).")
+        st.markdown("#### 🎯 Radar de Ponches (Caza-Ponches)")
+        st.markdown("Escanea las proyecciones de los abridores basándose en su capacidad ponchadora (K/9) y la vulnerabilidad del equipo rival, ajustando la línea mediante la distribución de Poisson.")
         
-        st.markdown("**🛡️ El Embudo Maestro (Filtro Global Pre-Top 4):**")
-        st.markdown("Para limpiar la cartelera de 'falsos positivos', el radar descarta desde la raíz a los lanzadores que no tienen el perfil puro. Solo se muestran Unders si el K/9 es menor a 8.0 (contacto extremo), y solo se muestran Overs si el K/9 es de 9.0 o más (ponchadores puros).")
+        st.markdown("**🛡️ El Embudo Maestro (Exclusivo Overs):**")
+        st.markdown("Para proteger el capital y evitar la volatilidad de apostar en contra del lanzador, el sistema **descarta automáticamente cualquier jugada de 'Under'**. Solo se procesan oportunidades de 'Over' (líneas de 4.5 en adelante), exigiendo un perfil ponchador de élite estricto de **$\ge$ 9.0 K/9**.")
 
-        st.markdown("**⭐ Estrellas Premium UNDER:**")
-        st.markdown("* **📉 Probabilidad (>=70%):** Exige precisión de Poisson evaluando la vulnerabilidad real.")
-        st.markdown("* **⏱️ Límite de Volumen (<= 12 Outs):** Activa la 'correa corta', descartando a lanzadores que promedien ir más allá de 4.0 IP.")
-        
-        st.markdown("**⭐ Estrellas Premium OVER:**")
-        st.markdown("* **📈 Probabilidad (>=60%):** El radar asume el ajuste estricto de la línea, detectando ventajas seguras.")
-        st.markdown("* **⏱️ Volumen de Élite (>= 5.0 IP):** Aseguramos que el mánager confía en él para cubrir el estándar mínimo de 5 entradas completas, garantizando el volumen de pitcheos.")
+        st.markdown("**⭐ Selección Premium (Alta Seguridad):**")
+        st.markdown("* **📉 El Candado de Ases (Poisson >= 65% + IP >= 5.0):** El lanzador recibe la estrella premium (⭐) solo si las matemáticas le otorgan un sólido 65% de cubrir su línea de 'Over', y además promedia un volumen de al menos **5.0 innings lanzados por salida**. Esto garantiza que el capital solo respalde a los brazos más dominantes y duraderos de la rotación, eliminando abridores con restricciones de pitcheos.")
 
         st.markdown("---")
 
