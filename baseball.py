@@ -577,7 +577,7 @@ def get_strikeout_hunters(fecha_hoy):
                 # -------------------------------------------------------------
                 k_proy_int = int(round(proj_k))
                 
-                # Si proyecta 4 o menos, lo descartamos por completo (Eliminamos el Under)
+                # Si proyecta 4 o menos, lo descartamos por completo
                 if k_proy_int <= 4:
                     continue
                 elif k_proy_int == 5:
@@ -599,7 +599,6 @@ def get_strikeout_hunters(fecha_hoy):
                 # =========================================================
                 # FILTRO GLOBAL DE K/9 (EL EMBUDO MAESTRO PARA OVERS)
                 # =========================================================
-                # Si vamos al Over, el pitcher TIENE que ser ponchador (K/9 >= 9.0)
                 if k9 < 9.0:
                     continue
 
@@ -632,8 +631,10 @@ def get_strikeout_hunters(fecha_hoy):
             ip_val = float(r["⏱️ Proy. IP"])
             es_alta_seg = False
             
-            # 🌟 ESTRELLA PREMIUM: SOLO OVERS (>= 65% Poisson y >= 5.0 IP)
-            if r["prob_pct"] >= 65 and ip_val >= 5.0:
+            # =========================================================
+            # 🌟 ESTRELLA PREMIUM: SOLO OVERS (>= 60% Poisson y >= 5.0 IP)
+            # =========================================================
+            if r["prob_pct"] >= 60 and ip_val >= 5.0:
                 es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
@@ -1255,12 +1256,7 @@ if st.session_state.df_mlb is not None:
                 k_data = get_strikeout_hunters(fecha_str)
                 premium_k_data = [k for k in k_data if '⭐' in k['⚾ Abridor']]
                 
-                premium_under = [k for k in premium_k_data if "Under" in k["🎯 Jugada"]]
                 premium_over = [k for k in premium_k_data if "Over" in k["🎯 Jugada"]]
-
-                aciertos_under = sum(1 for k in premium_under if '✅' in k['📝 Evaluación'])
-                fallos_under = sum(1 for k in premium_under if '❌' in k['📝 Evaluación'])
-                total_under = aciertos_under + fallos_under
 
                 aciertos_over = sum(1 for k in premium_over if '✅' in k['📝 Evaluación'])
                 fallos_over = sum(1 for k in premium_over if '❌' in k['📝 Evaluación'])
@@ -1278,11 +1274,9 @@ if st.session_state.df_mlb is not None:
                 resultados.append({
                     "Fecha": fecha_str,
                     "Ganadores ⭐": f"{aciertos_gan_premium}/{total_gan_premium}",
-                    "Under K ⭐": f"{aciertos_under}/{total_under}",
                     "Over K ⭐": f"{aciertos_over}/{total_over}",
                     "H+R+RBI ⭐": f"{aciertos_hrr}/{total_hrr}",
                     "Efect. Ganadores (%)": round(aciertos_gan_premium/total_gan_premium*100, 1) if total_gan_premium else 0,
-                    "Efect. Under K (%)": round(aciertos_under/total_under*100, 1) if total_under else 0,
                     "Efect. Over K (%)": round(aciertos_over/total_over*100, 1) if total_over else 0,
                     "Efect. H+R+RBI (%)": round(aciertos_hrr/total_hrr*100, 1) if total_hrr else 0
                 })
@@ -1314,9 +1308,6 @@ if st.session_state.df_mlb is not None:
                 total_gan_acc = sum(int(r["Ganadores ⭐"].split('/')[0]) for r in resultados)
                 total_gan_eval = sum(int(r["Ganadores ⭐"].split('/')[1]) for r in resultados)
                 
-                total_under_acc = sum(int(r["Under K ⭐"].split('/')[0]) for r in resultados)
-                total_under_eval = sum(int(r["Under K ⭐"].split('/')[1]) for r in resultados)
-                
                 total_over_acc = sum(int(r["Over K ⭐"].split('/')[0]) for r in resultados)
                 total_over_eval = sum(int(r["Over K ⭐"].split('/')[1]) for r in resultados)
 
@@ -1326,13 +1317,12 @@ if st.session_state.df_mlb is not None:
                 st.markdown("---")
                 st.markdown("### 📊 Resumen Acumulado de Élite (7 días)")
                 
-                # Expandimos a 4 columnas para que quepan todos los sistemas
-                col1, col2, col3, col4 = st.columns(4)
+                # Expandimos a 3 columnas para que quepan todos los sistemas
+                col1, col2, col3 = st.columns(3)
                 
                 col1.metric("Ganadores Premium", f"{total_gan_acc}/{total_gan_eval}", f"{round(total_gan_acc/total_gan_eval*100,1)}%" if total_gan_eval else "0%")
-                col2.metric("Under K Premium", f"{total_under_acc}/{total_under_eval}", f"{round(total_under_acc/total_under_eval*100,1)}%" if total_under_eval else "0%")
-                col3.metric("Over K Premium", f"{total_over_acc}/{total_over_eval}", f"{round(total_over_acc/total_over_eval*100,1)}%" if total_over_eval else "0%")
-                col4.metric("H+R+RBI Premium", f"{total_hrr_acc}/{total_hrr_eval}", f"{round(total_hrr_acc/total_hrr_eval*100,1)}%" if total_hrr_eval else "0%")
+                col2.metric("Over K Premium", f"{total_over_acc}/{total_over_eval}", f"{round(total_over_acc/total_over_eval*100,1)}%" if total_over_eval else "0%")
+                col3.metric("H+R+RBI Premium", f"{total_hrr_acc}/{total_hrr_eval}", f"{round(total_hrr_acc/total_hrr_eval*100,1)}%" if total_hrr_eval else "0%")
             else:
                 st.warning("No se encontraron juegos finalizados en los últimos 7 días.")
                 
@@ -1423,7 +1413,7 @@ if st.session_state.df_mlb is not None:
         st.markdown("Para proteger el capital y evitar la volatilidad de apostar en contra del lanzador, el sistema **descarta automáticamente cualquier jugada de 'Under'**. Solo se procesan oportunidades de 'Over' (líneas de 4.5 en adelante), exigiendo un perfil ponchador de élite estricto de **$\ge$ 9.0 K/9**.")
 
         st.markdown("**⭐ Selección Premium (Alta Seguridad):**")
-        st.markdown("* **📉 El Candado de Ases (Poisson >= 65% + IP >= 5.0):** El lanzador recibe la estrella premium (⭐) solo si las matemáticas le otorgan un sólido 65% de cubrir su línea de 'Over', y además promedia un volumen de al menos **5.0 innings lanzados por salida**. Esto garantiza que el capital solo respalde a los brazos más dominantes y duraderos de la rotación, eliminando abridores con restricciones de pitcheos.")
+        st.markdown("* **📉 El Candado de Ases (Poisson >= 60% + IP >= 5.0):** El lanzador recibe la estrella premium (⭐) solo si la distribución matemática le otorga un sólido 60% de cubrir su línea de 'Over', y además promedia un volumen de al menos **5.0 innings lanzados por salida**. Esto permite detectar un volumen consistente de abridores dominantes con alto K/9, eliminando a relevistas largos o lanzadores con restricciones de pitcheos.")
 
         st.markdown("---")
 
