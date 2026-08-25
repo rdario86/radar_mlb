@@ -799,7 +799,7 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
             df_full = pd.DataFrame(data_total)
             df_full = df_full[df_full['status'].isin(['Final', 'Game Over'])].copy()
             if 'game_type' in df_full.columns:
-                df_full = df_full[df_full['game_type'].isin(['R', 'P'])]
+                df_full = df_full[df_full['game_type'].isin(['R', 'F', 'D', 'L', 'W'])]
             df_full = df_full[['home_name', 'away_name', 'home_score', 'away_score', 'game_date']]
             df_full.columns = ['Local', 'Visitante', 'Carreras_Local', 'Carreras_Visitante', 'Date']
             df_full = df_full[df_full['Local'].isin(MLB_TEAM_WHITELIST) & df_full['Visitante'].isin(MLB_TEAM_WHITELIST)]
