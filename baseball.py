@@ -413,9 +413,9 @@ def get_hrr_hunters(fecha_hoy):
             es_alta_seg = False
             
             # =========================================================
-            # 🛡️ MODO LEYENDA: >= 75% Poisson, >= 4.4 PA y >= 2.2 HRR/G
+            # 🛡️ MODO LEYENDA: >= 75% Poisson, >= 4.5 PA y >= 2.4 HRR/G
             # =========================================================
-            if r["📉 Probabilidad"] >= 75 and float(r["📊 Avg PA (L7)"]) >= 4.4 and float(r["🔥 HRR/G (L7)"]) >= 2.2:
+            if r["📉 Probabilidad"] >= 75 and float(r["📊 Avg PA (L7)"]) >= 4.5 and float(r["🔥 HRR/G (L7)"]) >= 2.4:
                 es_alta_seg = True
                 
             nombre_bateador = f"⭐ {r['⚾ Bateador']}" if es_alta_seg else r['⚾ Bateador']
