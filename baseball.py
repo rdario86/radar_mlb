@@ -8,7 +8,6 @@ import calendar
 import io  
 from sklearn.ensemble import RandomForestClassifier
 from scipy.stats import poisson
-from scipy.stats import binom
 
 st.set_page_config(page_title="Predicción MLB Automatizada", layout="wide", page_icon="⚾")
 
@@ -249,192 +248,6 @@ def get_bullpen_metrics(team_id, fecha_corte):
     except Exception: 
         return avg_whip
 
-def get_hrr_hunters(fecha_hoy):
-    try:
-        juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
-        if not juegos_hoy: return []
-        
-        hrr_data = []
-        anio_str = str(fecha_hoy)[:4]
-        
-        for juego in juegos_hoy:
-            if juego.get('status', '') in ['Postponed', 'Cancelled']: continue
-            g_status = juego.get('status', '')
-            
-            # 1. WHIP de los Abridores
-            p_local, p_visita = get_starting_pitchers(juego)
-            whip_l = 1.30; whip_v = 1.30
-            
-            if p_local and str(p_local).upper() != 'TBD':
-                try: 
-                    w_temp, _ = get_pitcher_whip(p_local, fecha_hoy)
-                    whip_l = float(w_temp) if w_temp else 1.30
-                except: pass
-                
-            if p_visita and str(p_visita).upper() != 'TBD':
-                try: 
-                    w_temp, _ = get_pitcher_whip(p_visita, fecha_hoy)
-                    whip_v = float(w_temp) if w_temp else 1.30
-                except: pass
-                
-            # Añadimos el ID del equipo rival (opp_team_id) para buscar su bullpen
-            matchups = [
-                (juego.get('away_id'), juego.get('away_name', 'Visitante'), whip_l, juego.get('home_name', 'Local'), juego.get('home_id')),
-                (juego.get('home_id'), juego.get('home_name', 'Local'), whip_v, juego.get('away_name', 'Visitante'), juego.get('away_id'))
-            ]
-            
-            for team_id, team_name, opp_whip_sp, opp_team, opp_team_id in matchups:
-                if not team_id: continue
-                
-                # =========================================================
-                # 🛡️ NUEVO CANDADO: FACTOR BULLPEN (60% SP / 40% Equipo)
-                # =========================================================
-                team_whip = 1.30
-                try:
-                    # Buscamos el WHIP colectivo del equipo rival para simular el relevo
-                    t_data = statsapi.get('teams', {'teamId': opp_team_id, 'season': anio_str, 'hydrate': 'stats(group=[pitching],type=[season])'})
-                    stats_list = t_data.get('teams', [])[0].get('teamStats', [])
-                    for st in stats_list:
-                        if st.get('type', {}).get('displayName') == 'season':
-                            w_val = st.get('splits', [])[0].get('stat', {}).get('whip')
-                            if w_val: team_whip = float(w_val)
-                            break
-                except:
-                    pass
-                
-                # Multiplicador Ponderado
-                opp_whip = (opp_whip_sp * 0.60) + (team_whip * 0.40)
-                
-                try:
-                    # Obtenemos el roster de forma directa y masiva (Batching)
-                    roster_raw = statsapi.get('team_roster', {'teamId': team_id})
-                    roster = roster_raw.get('roster', [])
-                    if not roster: continue
-                    
-                    batter_ids = []
-                    for player in roster:
-                        pos = player.get('position', {}).get('abbreviation', '')
-                        if pos != 'P': 
-                            b_id = player.get('person', {}).get('id')
-                            if b_id: batter_ids.append(str(b_id))
-                            
-                    if not batter_ids: continue
-                    
-                    ids_str = ",".join(batter_ids)
-                    raw_data = statsapi.get('people', {'personIds': ids_str, 'hydrate': 'stats(group=[hitting],type=[gameLog])'})
-                    
-                    personas = raw_data.get('people', [])
-                    for person_info in personas:
-                        b_name = person_info.get('fullName', 'Unknown')
-                        stats_blocks = person_info.get('stats', [])
-                        if not stats_blocks: continue
-                        
-                        all_splits = []
-                        for block in stats_blocks:
-                            if block.get('type', {}).get('displayName') == 'gameLog':
-                                splits = block.get('splits', [])
-                                if splits: all_splits.extend(splits)
-                                
-                        if not all_splits: continue
-                                
-                        valid_splits = [s for s in all_splits if s.get('date', '') < fecha_hoy]
-                        if not valid_splits: continue 
-                        
-                        valid_splits.sort(key=lambda x: x.get('date', ''), reverse=True)
-                        
-                        last_7 = valid_splits[:7]
-                        juegos_jugados = len(last_7)
-                        if juegos_jugados == 0: continue
-                        
-                        l7_pa = 0; l7_h = 0; l7_r = 0; l7_rbi = 0
-                        pa_hoy_real = 0; hrr_hoy_real = 0
-                        
-                        for game in last_7:
-                            g_stats = game.get('stat', {})
-                            l7_pa += int(g_stats.get('plateAppearances', 0))
-                            l7_h += int(g_stats.get('hits', 0))
-                            l7_r += int(g_stats.get('runs', 0))
-                            l7_rbi += int(g_stats.get('rbi', 0))
-                            
-                        for s in all_splits:
-                            if s.get('date') == fecha_hoy:
-                                gs = s.get('stat', {})
-                                pa_hoy_real = int(gs.get('plateAppearances', 0))
-                                hrr_hoy_real = int(gs.get('hits', 0)) + int(gs.get('runs', 0)) + int(gs.get('rbi', 0))
-                        
-                        # Filtro Base Oportunidades
-                        avg_pa = l7_pa / juegos_jugados
-                        if avg_pa <= 3.0: continue
-                            
-                        hrr_total_l7 = l7_h + l7_r + l7_rbi
-                        avg_hrr = hrr_total_l7 / juegos_jugados
-                        
-                        # Proyección con WHIP Ponderado
-                        factor_whip = opp_whip / 1.30 if opp_whip > 0 else 1.0
-                        proy_hrr = avg_hrr * factor_whip
-
-                        # =========================================================
-                        # 🛡️ NUEVO CANDADO: RANGO HASTA 2.75
-                        # =========================================================
-                        if proy_hrr < 1.50 or proy_hrr > 2.75:
-                            continue 
-                        
-                        prob_exacta = 1 - poisson.cdf(1, proy_hrr)
-                        prob_pct = int(round(prob_exacta * 100))
-                        
-                        eval_str = "⏳ Pendiente"
-                        if g_status in ['Final', 'Game Over']:
-                            if pa_hoy_real == 0: eval_str = "🚫 No jugó"
-                            else:
-                                if hrr_hoy_real >= 2: eval_str = f"✅ Acierto ({hrr_hoy_real} H+R+RBI)"
-                                else: eval_str = f"❌ Fallo ({hrr_hoy_real} H+R+RBI)"
-                                    
-                        hrr_data.append({
-                            "⚾ Bateador": b_name,
-                            "👕 Equipo": team_name,
-                            "⚔️ Rival": opp_team,
-                            "📊 Avg PA (L7)": round(avg_pa, 1),
-                            "🔥 HRR/G (L7)": round(avg_hrr, 2),
-                            "📈 Proy Final": round(proy_hrr, 2),
-                            "📉 Probabilidad": prob_pct,
-                            "prob_exacta": prob_exacta,
-                            "📝 Evaluación": eval_str
-                        })
-                except Exception:
-                    pass 
-        
-        if not hrr_data: return [] 
-        
-        hrr_data.sort(key=lambda x: x['prob_exacta'], reverse=True)
-        top_4 = hrr_data[:4]
-        
-        nuevo_top4 = []
-        for r in top_4:
-            es_alta_seg = False
-            
-            # =========================================================
-            # 🛡️ MODO LEYENDA: >= 75% Poisson, >= 4.5 PA y >= 2.4 HRR/G
-            # =========================================================
-            if r["📉 Probabilidad"] >= 75 and float(r["📊 Avg PA (L7)"]) >= 4.5 and float(r["🔥 HRR/G (L7)"]) >= 2.4:
-                es_alta_seg = True
-                
-            nombre_bateador = f"⭐ {r['⚾ Bateador']}" if es_alta_seg else r['⚾ Bateador']
-            
-            nuevo_top4.append({
-                "⚾ Bateador": nombre_bateador,
-                "👕 Equipo": r["👕 Equipo"],
-                "⚔️ Rival": r["⚔️ Rival"],
-                "📊 Avg PA (L7)": f"{r['📊 Avg PA (L7)']}",
-                "🔥 HRR/G (L7)": f"{r['🔥 HRR/G (L7)']}",
-                "📈 Proy Final": f"{r['📈 Proy Final']}",
-                "📉 Probabilidad": f"{r['📉 Probabilidad']}%",
-                "📝 Evaluación": r["📝 Evaluación"]
-            })
-            
-        return nuevo_top4
-    except Exception as e:
-        return []
-        
 def get_strikeout_hunters(fecha_hoy):
     try:
         juegos_hoy = statsapi.schedule(date=fecha_hoy, sportId=1)
@@ -877,15 +690,14 @@ if st.session_state.df_mlb is not None:
         st.session_state.fecha_modelo = st.session_state.fecha_hoy
         st.sidebar.success("✅ IA lista y guardada.")
     
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "📅 Cartelera del Día",
-    "🔥 Caza-Ponches",
-    "🔹 Caza-H+R+RBI",
-    "🧮 Calculadora +EV",
-    "📊 Auditoría Semanal",
-    "🔬 Lupa de Pitcheo",
-    "⭐ Filtros Premium"
-])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "📅 Cartelera del Día",
+        "🔥 Caza-Ponches",
+        "🧮 Calculadora +EV",
+        "📊 Auditoría Semanal",
+        "🔬 Lupa de Pitcheo",
+        "⭐ Filtros Premium"
+    ])
     
     with tab1:
         st.markdown(f"### 🎯 Partidos programados para el: **{st.session_state.fecha_hoy}**")
@@ -1082,52 +894,10 @@ if st.session_state.df_mlb is not None:
                 st.markdown("### 📊 Rendimiento Caza-Ponches")
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Lanzadores Evaluados", total_evaluados)
-                c2.metric("Aciertos (Over/Under)", aciertos)
+                c2.metric("Aciertos (Over)", aciertos)
                 c3.metric("Efectividad", f"{int(round(efectividad))}%")
-                
+
     with tab3:
-        st.markdown("### 🚀 Radar de Producción (Hits + Anotadas + Impulsadas)")
-        st.markdown("Busca a los bateadores con mayor probabilidad de cubrir la línea **Over 1.5 H+R+RBI**, ajustado por su volumen de turnos y el WHIP del lanzador rival.")
-        
-        if st.button("🔎 Buscar Bateadores Premium (Top 4)", type="primary", use_container_width=True):
-            with st.spinner("Calculando proyecciones ofensivas y multiplicadores WHIP..."):
-                # ¡AQUÍ ESTABA EL ERROR! Ahora llamamos a get_hrr_hunters
-                resultados_hrr = get_hrr_hunters(st.session_state.fecha_hoy) 
-                
-                if resultados_hrr:
-                    st.session_state[f"resultados_hrr_{st.session_state.fecha_hoy}"] = resultados_hrr
-                else:
-                    st.session_state[f"resultados_hrr_{st.session_state.fecha_hoy}"] = None
-                    st.warning("No se encontraron bateadores con proyecciones válidas para hoy.")
-
-        clave_hrr = f"resultados_hrr_{st.session_state.fecha_hoy}"
-        if clave_hrr in st.session_state and st.session_state[clave_hrr] is not None:
-            df_hrr = pd.DataFrame(st.session_state[clave_hrr])
-            df_hrr_estilizado = df_hrr.style.set_properties(**{'text-align': 'center'}).set_table_styles([dict(selector='th', props=[('text-align', 'center')])])
-            st.dataframe(df_hrr_estilizado, use_container_width=True, hide_index=True)
-
-            excel_hrr = convertir_df_a_excel(df_hrr, "Produccion_Ofensiva")
-            st.download_button(
-                label="📥 Descargar Radar (Excel)",
-                data=excel_hrr,
-                file_name=f"caza_hrr_{st.session_state.fecha_hoy}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-
-            total_evaluados = sum(1 for e in df_hrr['📝 Evaluación'] if '✅' in e or '❌' in e)
-            aciertos = sum(1 for e in df_hrr['📝 Evaluación'] if '✅' in e)
-
-            if total_evaluados > 0:
-                efectividad = (aciertos / total_evaluados) * 100
-                st.markdown("### 📊 Rendimiento del Radar H+R+RBI")
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Bateadores Evaluados", total_evaluados)
-                c2.metric("Aciertos (Over 1.5)", aciertos)
-                c3.metric("Efectividad", f"{int(round(efectividad))}%")
-        elif clave_hrr not in st.session_state:
-            st.info("Presiona el botón para buscar bateadores con alta probabilidad de explotar la ofensiva.")
-
-    with tab4:
         st.markdown("### 🧮 Calculadora de Valor Esperado (+EV)")
         st.markdown("Compara la probabilidad matemática del Radar con la cuota decimal de tu casa de apuestas para descubrir si la jugada es rentable a largo plazo.")
         
@@ -1167,9 +937,9 @@ if st.session_state.df_mlb is not None:
                 col2.metric("Valor Esperado (EV)", f"{ev_pct_int}%", "No Rentable (-EV)", delta_color="inverse")
                 st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita_int}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")
 
-    with tab5:
+    with tab4:
         st.markdown("### 📊 Auditoría Premium (Últimos 7 Días previos a la fecha elegida)")
-        st.markdown("Evalúa estrictamente la rentabilidad de las jugadas de Alta Seguridad (⭐) en todos tus módulos: A Ganar, Caza-Ponches y el nuevo Radar de Producción H+R+RBI.")
+        st.markdown("Evalúa estrictamente la rentabilidad de las jugadas de Alta Seguridad (⭐) en todos tus módulos: A Ganar y Caza-Ponches.")
 
         if st.button("🔍 Ejecutar Auditoría Premium", type="primary", use_container_width=True):
             # Conectamos la auditoría al "Motor de Tiempo" del sidebar
@@ -1185,7 +955,7 @@ if st.session_state.df_mlb is not None:
             clf_principal = st.session_state.modelo_ia 
 
             for idx, fecha_str in enumerate(fechas_auditar):
-                estado.write(f"⏳ Procesando {fecha_str} (Analizando pitcheo y ofensiva de élite)...")
+                estado.write(f"⏳ Procesando {fecha_str} (Analizando pitcheo de élite)...")
 
                 juegos_dia = statsapi.schedule(date=fecha_str, sportId=1)
                 if not any(j['status'] in ['Final', 'Game Over'] for j in juegos_dia):
@@ -1262,23 +1032,13 @@ if st.session_state.df_mlb is not None:
                 fallos_over = sum(1 for k in premium_over if '❌' in k['📝 Evaluación'])
                 total_over = aciertos_over + fallos_over
 
-                # 3. EVALUACIÓN: CAZA-HCI (NUEVO RADAR H+R+RBI)
-                hrr_data = get_hrr_hunters(fecha_str)
-                premium_hrr = [h for h in hrr_data if '⭐' in h['⚾ Bateador']]
-
-                aciertos_hrr = sum(1 for h in premium_hrr if '✅' in h['📝 Evaluación'])
-                fallos_hrr = sum(1 for h in premium_hrr if '❌' in h['📝 Evaluación'])
-                total_hrr = aciertos_hrr + fallos_hrr  # Excluye automáticamente a los que "No jugaron"
-
                 # CONSOLIDAR RESULTADOS DEL DÍA
                 resultados.append({
                     "Fecha": fecha_str,
                     "Ganadores ⭐": f"{aciertos_gan_premium}/{total_gan_premium}",
                     "Over K ⭐": f"{aciertos_over}/{total_over}",
-                    "H+R+RBI ⭐": f"{aciertos_hrr}/{total_hrr}",
                     "Efect. Ganadores (%)": round(aciertos_gan_premium/total_gan_premium*100, 1) if total_gan_premium else 0,
-                    "Efect. Over K (%)": round(aciertos_over/total_over*100, 1) if total_over else 0,
-                    "Efect. H+R+RBI (%)": round(aciertos_hrr/total_hrr*100, 1) if total_hrr else 0
+                    "Efect. Over K (%)": round(aciertos_over/total_over*100, 1) if total_over else 0
                 })
 
                 barra_progreso.progress((idx + 1) / len(fechas_auditar))
@@ -1311,22 +1071,17 @@ if st.session_state.df_mlb is not None:
                 total_over_acc = sum(int(r["Over K ⭐"].split('/')[0]) for r in resultados)
                 total_over_eval = sum(int(r["Over K ⭐"].split('/')[1]) for r in resultados)
 
-                total_hrr_acc = sum(int(r["H+R+RBI ⭐"].split('/')[0]) for r in resultados)
-                total_hrr_eval = sum(int(r["H+R+RBI ⭐"].split('/')[1]) for r in resultados)
-
                 st.markdown("---")
                 st.markdown("### 📊 Resumen Acumulado de Élite (7 días)")
                 
-                # Expandimos a 3 columnas para que quepan todos los sistemas
-                col1, col2, col3 = st.columns(3)
+                col1, col2 = st.columns(2)
                 
                 col1.metric("Ganadores Premium", f"{total_gan_acc}/{total_gan_eval}", f"{round(total_gan_acc/total_gan_eval*100,1)}%" if total_gan_eval else "0%")
                 col2.metric("Over K Premium", f"{total_over_acc}/{total_over_eval}", f"{round(total_over_acc/total_over_eval*100,1)}%" if total_over_eval else "0%")
-                col3.metric("H+R+RBI Premium", f"{total_hrr_acc}/{total_hrr_eval}", f"{round(total_hrr_acc/total_hrr_eval*100,1)}%" if total_hrr_eval else "0%")
             else:
                 st.warning("No se encontraron juegos finalizados en los últimos 7 días.")
                 
-    with tab6:
+    with tab5:
         st.markdown("### 🔬 Lupa de Pitcheo: Radiografía de 7 Juegos")
         st.markdown("Selecciona un partido de la cartelera para desglosar el desempeño crudo del Abridor y el Bullpen en su muestra reciente.")
         
@@ -1392,7 +1147,7 @@ if st.session_state.df_mlb is not None:
                     
                     st.caption("📝 **Nota Analítica:** La tabla muestra las últimas 7 salidas de los abridores y todo el trabajo de los relevistas en los últimos 7 días. ER = Carreras Limpias.")
 
-    with tab7:
+    with tab6:
         st.markdown("### ⭐ Manual de Jugadas Premium")
         st.markdown("El radar asigna automáticamente una estrella (⭐) a las jugadas que cumplen con estrictos criterios matemáticos de altísima seguridad. Aquí están las reglas exactas que el algoritmo exige de forma interna para encender la alerta de **Jugada Premium**.")
         
@@ -1414,17 +1169,3 @@ if st.session_state.df_mlb is not None:
 
         st.markdown("**⭐ Selección Premium (Alta Seguridad):**")
         st.markdown("* **📉 El Candado de Ases (Poisson >= 62% + IP >= 5.0):** El lanzador recibe la estrella premium (⭐) solo si la distribución matemática le otorga un sólido 62% de cubrir su línea de 'Over', y además promedia un volumen de al menos **5.0 innings lanzados por salida**. Esto permite detectar un volumen consistente de abridores dominantes con alto K/9, eliminando a relevistas largos o lanzadores con restricciones de pitcheos.")
-
-        st.markdown("---")
-
-        st.markdown("#### 🚀 Radar de Producción (Hits + Carreras + Impulsadas)")
-        st.markdown("Proyecta si un bateador superará la línea de **Over 1.5 en H+R+RBI** basándose en su rendimiento reciente y la vulnerabilidad del lanzador.")
-        
-        st.markdown("**🛡️ El Embudo de Volumen:**")
-        st.markdown("Para garantizar oportunidades reales, el sistema descarta instantáneamente a cualquier jugador que promedie **3.0 turnos (PA) o menos** en sus últimos 7 juegos. Esto permite incluir a bateadores élite que hayan recibido un día de descanso reciente sin que el modelo los penalice.")
-
-        st.markdown("**🛡️ El Embudo de Proyección (1.50 - 2.75):**")
-        st.markdown("El radar escanea a todos los bateadores con volumen de juego, pero solo lleva a la tabla final del Top 4 a aquellos cuya proyección caiga entre **1.50 y 2.75 H+R+RBI**. Esto limpia a los bateadores fríos pero le da espacio al modelo para cazar a la élite ofensiva.")
-
-        st.markdown("**⭐ Selección Premium (Modo Leyenda):**")
-        st.markdown("* **📉 El Triple Candado (Poisson >= 75% | PA >= 4.4 | HRR/G >= 2.2):** La estrella premium (⭐) ha sido calibrada al extremo. Para recibirla, el jugador debe ser un primer bate inamovible (>= 4.4 PA), tener un 75% de probabilidad de cubrir la línea, y lo más importante: **estar promediando al menos 2.2 H+R+RBI por mérito propio (fuego real)** sin depender del pitcher rival. Este filtro elimina falsos positivos y reduce el volumen a unas exclusivas 4 o 5 selecciones por semana.")
