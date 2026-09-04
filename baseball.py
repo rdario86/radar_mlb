@@ -687,7 +687,7 @@ if st.session_state.df_mlb is not None:
         
         features = ['Elo_L', 'Elo_V', 'Racha_Diff', 'H2H_L_WinPct', 'Luck_Diff', 'Split_Diff']
         clf = RandomForestClassifier(n_estimators=150, max_depth=MAX_DEPTH_ELO, random_state=42)
-        clf.fit(df_train[features], df_train['Win'])
+        clf.fit(df_train[features], y_train)
         
         st.session_state.modelo_ia = clf
         st.session_state.fecha_modelo = st.session_state.fecha_hoy
@@ -770,7 +770,12 @@ if st.session_state.df_mlb is not None:
 
                             features = ['Elo_Local', 'Elo_Visitante', 'Racha_Diff', 'H2H', 'Luck_Diff', 'Split_Diff']
 
-                            X_hoy = pd.DataFrame([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]], columns=features)
+                            # Reemplaza la definición de X_hoy por esto:
+                            X_hoy = pd.DataFrame(
+                                [[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]], 
+                                columns=clf.feature_names_in_
+                            )
+
                             prob_ml = clf.predict_proba(X_hoy)[0][1]
 
                             pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
