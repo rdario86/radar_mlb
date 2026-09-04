@@ -616,7 +616,10 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
             df_full = df_full[['home_name', 'away_name', 'home_score', 'away_score', 'game_date']]
             df_full.columns = ['Local', 'Visitante', 'Carreras_Local', 'Carreras_Visitante', 'Date']
             df_full = df_full[df_full['Local'].isin(MLB_TEAM_WHITELIST) & df_full['Visitante'].isin(MLB_TEAM_WHITELIST)]
-            
+
+            # Ordenar estrictamente por fecha antes de calcular el Elo
+            df_full = df_full.sort_values('Date').reset_index(drop=True)
+
             elo_dict = {team: 1500.0 for team in MLB_TEAM_WHITELIST}
             h_elo_l, h_elo_v = [], []
             for _, row in df_full.iterrows():
