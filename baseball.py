@@ -768,6 +768,8 @@ if st.session_state.df_mlb is not None:
                             whip_bp_l = get_bullpen_metrics(home_id, st.session_state.fecha_hoy)
                             whip_bp_v = get_bullpen_metrics(away_id, st.session_state.fecha_hoy)
 
+                            features = ['Elo_Local', 'Elo_Visitante', 'Racha_Diff', 'H2H', 'Luck_Diff', 'Split_Diff']
+
                             X_hoy = pd.DataFrame([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]], columns=features)
                             prob_ml = clf.predict_proba(X_hoy)[0][1]
 
@@ -1000,6 +1002,8 @@ if st.session_state.df_mlb is not None:
                     
                     whip_bp_l = get_bullpen_metrics(home_id, fecha_str)
                     whip_bp_v = get_bullpen_metrics(away_id, fecha_str)
+
+                    features = ['Elo_Local', 'Elo_Visitante', 'Racha_Diff', 'H2H', 'Luck_Diff', 'Split_Diff']
 
                     X_auditoria = pd.DataFrame([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]], columns=features)
                     prob_ml = clf_principal.predict_proba(X_auditoria)[0][1]
