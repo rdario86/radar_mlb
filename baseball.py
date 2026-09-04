@@ -616,10 +616,7 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
             df_full = df_full[['home_name', 'away_name', 'home_score', 'away_score', 'game_date']]
             df_full.columns = ['Local', 'Visitante', 'Carreras_Local', 'Carreras_Visitante', 'Date']
             df_full = df_full[df_full['Local'].isin(MLB_TEAM_WHITELIST) & df_full['Visitante'].isin(MLB_TEAM_WHITELIST)]
-
-            # Ordenar estrictamente por fecha antes de calcular el Elo
-            df_full = df_full.sort_values('Date').reset_index(drop=True)
-
+            
             elo_dict = {team: 1500.0 for team in MLB_TEAM_WHITELIST}
             h_elo_l, h_elo_v = [], []
             for _, row in df_full.iterrows():
@@ -687,7 +684,7 @@ if st.session_state.df_mlb is not None:
         
         features = ['Elo_L', 'Elo_V', 'Racha_Diff', 'H2H_L_WinPct', 'Luck_Diff', 'Split_Diff']
         clf = RandomForestClassifier(n_estimators=150, max_depth=MAX_DEPTH_ELO, random_state=42)
-        clf.fit(df_train[features], y_train)
+        clf.fit(df_train[features], df_train['Win'])
         
         st.session_state.modelo_ia = clf
         st.session_state.fecha_modelo = st.session_state.fecha_hoy
@@ -768,14 +765,7 @@ if st.session_state.df_mlb is not None:
                             whip_bp_l = get_bullpen_metrics(home_id, st.session_state.fecha_hoy)
                             whip_bp_v = get_bullpen_metrics(away_id, st.session_state.fecha_hoy)
 
-                            features = ['Elo_Local', 'Elo_Visitante', 'Racha_Diff', 'H2H', 'Luck_Diff', 'Split_Diff']
-
-                            # Reemplaza la definición de X_hoy por esto:
-                            X_hoy = pd.DataFrame(
-                                [[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]], 
-                                columns=clf.feature_names_in_
-                            )
-
+                            X_hoy = np.array([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]])
                             prob_ml = clf.predict_proba(X_hoy)[0][1]
 
                             pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
@@ -1008,9 +998,7 @@ if st.session_state.df_mlb is not None:
                     whip_bp_l = get_bullpen_metrics(home_id, fecha_str)
                     whip_bp_v = get_bullpen_metrics(away_id, fecha_str)
 
-                    features = ['Elo_Local', 'Elo_Visitante', 'Racha_Diff', 'H2H', 'Luck_Diff', 'Split_Diff']
-
-                    X_auditoria = pd.DataFrame([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]], columns=features)
+                    X_auditoria = np.array([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]])
                     prob_ml = clf_principal.predict_proba(X_auditoria)[0][1]
                     
                     pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
@@ -1103,7 +1091,7 @@ if st.session_state.df_mlb is not None:
         if not juegos_validos:
             st.info("No hay juegos programados para esta fecha.")
         else:
-            opciones_juegos = {f"{j['away_name']} ✈️ @ 🏠 {j['home_name']} (Juego {j.get('game_num', 1)})": j for j in juegos_validos}
+            opciones_juegos = {f"{j['away_name']} ✈️ @ 🏠 {j['home_name']}": j for j in juegos_validos}
             juego_sel = st.selectbox("⚾ Selecciona el Partido:", list(opciones_juegos.keys()))
             
             if st.button("🔍 Extraer Radiografía", type="primary", use_container_width=True):
