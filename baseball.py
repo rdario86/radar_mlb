@@ -1094,7 +1094,7 @@ if st.session_state.df_mlb is not None:
         if not juegos_validos:
             st.info("No hay juegos programados para esta fecha.")
         else:
-            opciones_juegos = {f"{j['away_name']} ✈️ @ 🏠 {j['home_name']}": j for j in juegos_validos}
+            opciones_juegos = {f"{j['away_name']} ✈️ @ 🏠 {j['home_name']} (Juego {j.get('game_num', 1)})": j for j in juegos_validos}
             juego_sel = st.selectbox("⚾ Selecciona el Partido:", list(opciones_juegos.keys()))
             
             if st.button("🔍 Extraer Radiografía", type="primary", use_container_width=True):
