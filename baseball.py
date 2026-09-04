@@ -778,9 +778,9 @@ if st.session_state.df_mlb is not None:
 
                             es_alta_seg = False
                             if pct_final >= 65:
-                                if ganador == e_local and whip_l < 1.15 and whip_v > 1.35 and ip_l >= 20.0:
+                                if ganador == e_local and whip_l < 1.15 and whip_v > 1.35 and ip_l >= 20.0 and whip_bp_l < 1.35:
                                     es_alta_seg = True
-                                elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35 and ip_v >= 20.0:
+                                elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35 and ip_v >= 20.0 and whip_bp_v < 1.35:
                                     es_alta_seg = True
 
                             jugada_str = f"⭐ {ganador} (A Ganar)" if es_alta_seg else f"{ganador} (A Ganar)"
@@ -1010,9 +1010,9 @@ if st.session_state.df_mlb is not None:
 
                     es_alta_seg = False
                     if pct_final >= 65:
-                        if ganador == e_local and whip_l < 1.15 and whip_v > 1.35 and ip_l >= 20.0:
+                        if ganador == e_local and whip_l < 1.15 and whip_v > 1.35 and ip_l >= 20.0 and whip_bp_l < 1.35:
                             es_alta_seg = True
-                        elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35 and ip_v >= 20.0:
+                        elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35 and ip_v >= 20.0 and whip_bp_v < 1.35:
                             es_alta_seg = True
 
                     if es_alta_seg:
