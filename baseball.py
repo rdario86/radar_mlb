@@ -616,6 +616,8 @@ if st.sidebar.button("🔄 Descargar Historial Base", type="primary"):
             df_full = df_full[['home_name', 'away_name', 'home_score', 'away_score', 'game_date']]
             df_full.columns = ['Local', 'Visitante', 'Carreras_Local', 'Carreras_Visitante', 'Date']
             df_full = df_full[df_full['Local'].isin(MLB_TEAM_WHITELIST) & df_full['Visitante'].isin(MLB_TEAM_WHITELIST)]
+
+            df_full = df_full.sort_values('Date').reset_index(drop=True)
             
             elo_dict = {team: 1500.0 for team in MLB_TEAM_WHITELIST}
             h_elo_l, h_elo_v = [], []
@@ -731,10 +733,6 @@ if st.session_state.df_mlb is not None:
                             p_local, p_visita = get_starting_pitchers(juego)
 
                             if e_local not in MLB_TEAM_WHITELIST or e_visita not in MLB_TEAM_WHITELIST: continue
-                            if e_local in equipos_procesados or e_visita in equipos_procesados: continue
-
-                            equipos_procesados.add(e_local)
-                            equipos_procesados.add(e_visita)
 
                             game_dt_str = juego.get('game_datetime', '')
                             if game_dt_str:
@@ -983,7 +981,6 @@ if st.session_state.df_mlb is not None:
                     p_local, p_visita = get_starting_pitchers(juego)
                     elo_l = df_filtrado_aud[df_filtrado_aud['Local'] == e_local].tail(1)['Elo_L'].values[0] if len(df_filtrado_aud[df_filtrado_aud['Local'] == e_local]) > 0 else 1500
                     elo_v = df_filtrado_aud[df_filtrado_aud['Visitante'] == e_visita].tail(1)['Elo_V'].values[0] if len(df_filtrado_aud[df_filtrado_aud['Visitante'] == e_visita]) > 0 else 1500
-                    elo_l += 35
 
                     racha_l = get_recent_form(e_local, df_filtrado_aud)
                     racha_v = get_recent_form(e_visita, df_filtrado_aud)
