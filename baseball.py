@@ -268,10 +268,10 @@ def get_strikeout_hunters(fecha_hoy):
                 if not p_name or p_name == 'TBD': continue
                 
                 # =========================================================
-                # NUEVO FILTRO: WHIP < 1.30 (Últimas 7 salidas)
+                # FILTRO: WHIP < 1.35 (Últimas 7 salidas)
                 # =========================================================
                 whip, _ = get_pitcher_whip(p_name, fecha_hoy)
-                if whip >= 1.30:
+                if whip >= 1.35:
                     continue   # descartamos al lanzador
 
                 players = statsapi.lookup_player(p_name)
@@ -393,12 +393,9 @@ def get_strikeout_hunters(fecha_hoy):
                 proj_k = (promedio_k_ponderado * factor_rival)
                 k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1)
                 
-                # -------------------------------------------------------------
                 # Línea dinámica para OVERS
-                # -------------------------------------------------------------
                 k_proy_int = int(round(proj_k))
                 
-                # Si proyecta 4 o menos, lo descartamos
                 if k_proy_int <= 4:
                     continue
                 elif k_proy_int == 5:
@@ -411,15 +408,13 @@ def get_strikeout_hunters(fecha_hoy):
                     tipo_jugada = "Over 7.5"; limite_eval = 7
                 elif k_proy_int == 9:
                     tipo_jugada = "Over 8.5"; limite_eval = 8
-                else: # 10 o más
+                else:
                     tipo_jugada = "Over 9.5"; limite_eval = 9
 
                 prob_exacta = 1 - poisson.cdf(limite_eval, proj_k) if proj_k > 0 else 0.0
                 prob_pct = int(round(prob_exacta * 100))
 
-                # =========================================================
-                # FILTRO GLOBAL DE K/9 (EL EMBUDO MAESTRO PARA OVERS)
-                # =========================================================
+                # FILTRO GLOBAL DE K/9 (≥ 10.0)
                 if k9 < 10.0:
                     continue
 
@@ -431,7 +426,7 @@ def get_strikeout_hunters(fecha_hoy):
                         eval_str = f"✅ Acierto (Over: {ks_hoy_real} Ks)" if ks_hoy_real > limite_eval else f"❌ Fallo (Under: {ks_hoy_real} Ks)"
 
                 # =========================================================
-                # AHORA SÍ AGREGAMOS EL PITCHER (ya pasó todos los filtros)
+                # GUARDAMOS EL PITCHER CON TODOS SUS DATOS (incluyendo WHIP)
                 # =========================================================
                 pitchers_data.append({
                     "⚾ Abridor": p_name,
@@ -444,7 +439,8 @@ def get_strikeout_hunters(fecha_hoy):
                     "prob_pct": prob_pct,
                     "prob_exacta": prob_exacta,
                     "📝 Evaluación": eval_str,
-                    "outs_avg": avg_outs_redondeado
+                    "outs_avg": avg_outs_redondeado,
+                    "whip_val": whip          # <--- guardamos el WHIP para la lógica premium
                 })
 
         pitchers_data.sort(key=lambda x: x['prob_exacta'], reverse=True)
@@ -453,10 +449,13 @@ def get_strikeout_hunters(fecha_hoy):
         nuevo_top4 = []
         for r in top_4:
             ip_val = float(r["⏱️ Proy. IP"])
+            whip_val = r["whip_val"]          # recuperamos el WHIP almacenado
             es_alta_seg = False
             
-            # 🌟 ESTRELLA PREMIUM: SOLO OVERS (>= 55% Poisson y >= 5.0 IP)
-            if r["prob_pct"] >= 55 and ip_val >= 5.0:
+            # =========================================================
+            # 🌟 ESTRELLA PREMIUM: ahora exige WHIP ≤ 1.00, además de prob≥55% y IP≥5.0
+            # =========================================================
+            if r["prob_pct"] >= 55 and ip_val >= 5.0 and whip_val <= 1.00:
                 es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
