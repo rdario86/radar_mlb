@@ -455,7 +455,7 @@ def get_strikeout_hunters(fecha_hoy):
             # =========================================================
             # 🌟 ESTRELLA PREMIUM: ahora exige WHIP ≤ 1.15, además de prob≥58% y IP≥5.0
             # =========================================================
-            if r["prob_pct"] >= 58 and ip_val >= 5.0 and whip_val <= 1.15:
+            if r["prob_pct"] >= 58 and ip_val >= 5.0 and whip_val <= 1.05:
                 es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
