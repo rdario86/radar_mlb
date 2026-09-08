@@ -266,6 +266,14 @@ def get_strikeout_hunters(fecha_hoy):
             
             for p_name, team_id, p_team, opp_id, opp_name in matchups:
                 if not p_name or p_name == 'TBD': continue
+                
+                # =========================================================
+                # NUEVO FILTRO: WHIP < 1.35 (Últimas 7 salidas)
+                # =========================================================
+                whip, _ = get_pitcher_whip(p_name, fecha_hoy)
+                if whip >= 1.35:
+                    continue   # descartamos al lanzador
+
                 players = statsapi.lookup_player(p_name)
                 if not players: continue
                 
@@ -373,7 +381,7 @@ def get_strikeout_hunters(fecha_hoy):
                 innings_enteros = avg_outs_redondeado // 3
                 outs_sobrantes = avg_outs_redondeado % 3
                 
-                # FILTRO DE VOLUMEN: Solo piso (>= 3.0 IP o 9 outs)
+                # FILTRO DE VOLUMEN: mínimo 3.0 IP
                 if avg_outs_redondeado < 9:
                     continue
                 
@@ -386,11 +394,11 @@ def get_strikeout_hunters(fecha_hoy):
                 k9 = round((l7_ks / (l7_outs / 3.0)) * 9.0, 1)
                 
                 # -------------------------------------------------------------
-                # NUEVA LÍNEA DINÁMICA: EXCLUSIVO PARA OVERS
+                # Línea dinámica para OVERS
                 # -------------------------------------------------------------
                 k_proy_int = int(round(proj_k))
                 
-                # Si proyecta 4 o menos, lo descartamos por completo
+                # Si proyecta 4 o menos, lo descartamos
                 if k_proy_int <= 4:
                     continue
                 elif k_proy_int == 5:
@@ -422,6 +430,9 @@ def get_strikeout_hunters(fecha_hoy):
                     else:
                         eval_str = f"✅ Acierto (Over: {ks_hoy_real} Ks)" if ks_hoy_real > limite_eval else f"❌ Fallo (Under: {ks_hoy_real} Ks)"
 
+                # =========================================================
+                # AHORA SÍ AGREGAMOS EL PITCHER (ya pasó todos los filtros)
+                # =========================================================
                 pitchers_data.append({
                     "⚾ Abridor": p_name,
                     "👕 Equipo": p_team,
@@ -444,9 +455,7 @@ def get_strikeout_hunters(fecha_hoy):
             ip_val = float(r["⏱️ Proy. IP"])
             es_alta_seg = False
             
-            # =========================================================
             # 🌟 ESTRELLA PREMIUM: SOLO OVERS (>= 55% Poisson y >= 5.0 IP)
-            # =========================================================
             if r["prob_pct"] >= 55 and ip_val >= 5.0:
                 es_alta_seg = True
                 
