@@ -268,10 +268,10 @@ def get_strikeout_hunters(fecha_hoy):
                 if not p_name or p_name == 'TBD': continue
                 
                 # =========================================================
-                # NUEVO FILTRO: WHIP < 1.35 (Últimas 7 salidas)
+                # NUEVO FILTRO: WHIP < 1.30 (Últimas 7 salidas)
                 # =========================================================
                 whip, _ = get_pitcher_whip(p_name, fecha_hoy)
-                if whip >= 1.35:
+                if whip >= 1.30:
                     continue   # descartamos al lanzador
 
                 players = statsapi.lookup_player(p_name)
