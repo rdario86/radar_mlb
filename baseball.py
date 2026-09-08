@@ -412,7 +412,7 @@ def get_strikeout_hunters(fecha_hoy):
                 # =========================================================
                 # FILTRO GLOBAL DE K/9 (EL EMBUDO MAESTRO PARA OVERS)
                 # =========================================================
-                if k9 < 9.0:
+                if k9 < 10.0:
                     continue
 
                 eval_str = "⏳ Pendiente"
@@ -445,9 +445,9 @@ def get_strikeout_hunters(fecha_hoy):
             es_alta_seg = False
             
             # =========================================================
-            # 🌟 ESTRELLA PREMIUM: SOLO OVERS (>= 62% Poisson y >= 5.0 IP)
+            # 🌟 ESTRELLA PREMIUM: SOLO OVERS (>= 60% Poisson y >= 5.0 IP)
             # =========================================================
-            if r["prob_pct"] >= 62 and ip_val >= 5.0:
+            if r["prob_pct"] >= 60 and ip_val >= 5.0:
                 es_alta_seg = True
                 
             nombre_abridor = f"⭐ {r['⚾ Abridor']}" if es_alta_seg else r['⚾ Abridor']
