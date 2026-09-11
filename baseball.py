@@ -944,14 +944,11 @@ if st.session_state.df_mlb is not None:
                 st.error(f"❌ **Déjala Pasar.** El casino está protegiendo su dinero exigiendo un **{prob_implicita_int}%** de éxito, pero el radar solo le da un **{prob_radar}%**. A largo plazo, esta apuesta te hará perder tu capital (bankroll).")
 
     with tab4:
-        st.markdown("### 📊 Auditoría Premium (Últimos 7 Días previos a la fecha elegida)")
-        st.markdown("Evalúa estrictamente la rentabilidad de las jugadas de Alta Seguridad (⭐) en todos tus módulos: A Ganar y Caza-Ponches.")
+        st.markdown("### 📊 Auditoría Completa (Últimos 7 Días previos a la fecha elegida)")
+        st.markdown("Evalúa el rendimiento **total** de todas las jugadas del radar (A Ganar y Caza-Ponches), y lo compara con el subconjunto **Premium (⭐)**.")
 
-        if st.button("🔍 Ejecutar Auditoría Premium", type="primary", use_container_width=True):
-            # Conectamos la auditoría al "Motor de Tiempo" del sidebar
+        if st.button("🔍 Ejecutar Auditoría Completa", type="primary", use_container_width=True):
             fecha_base = datetime.datetime.strptime(st.session_state.fecha_hoy, '%Y-%m-%d').date()
-            
-            # Retrocedemos 7 días a partir de la fecha que hayas seleccionado
             fechas_auditar = [(fecha_base - datetime.timedelta(days=i+1)).strftime('%Y-%m-%d') for i in range(7)]
 
             resultados = []
@@ -961,10 +958,10 @@ if st.session_state.df_mlb is not None:
             clf_principal = st.session_state.modelo_ia 
 
             for idx, fecha_str in enumerate(fechas_auditar):
-                estado.write(f"⏳ Procesando {fecha_str} (Analizando pitcheo de élite)...")
+                estado.write(f"⏳ Procesando {fecha_str} (Evaluando jugadas totales y premium)...")
 
                 juegos_dia = statsapi.schedule(date=fecha_str, sportId=1)
-                if not any(j['status'] in ['Final', 'Game Over'] for j in juegos_dia):
+                if not juegos_dia:
                     barra_progreso.progress((idx + 1) / len(fechas_auditar))
                     continue
 
@@ -973,22 +970,28 @@ if st.session_state.df_mlb is not None:
                     barra_progreso.progress((idx + 1) / len(fechas_auditar))
                     continue
 
+                # Contadores A GANAR (Total + Premium)
+                aciertos_gan_total = 0
+                total_gan_total = 0
                 aciertos_gan_premium = 0
                 total_gan_premium = 0
-                
-                # 1. EVALUACIÓN: A GANAR
+
+                # =========================================================
+                # 1. EVALUACIÓN: A GANAR (TODAS las jugadas)
+                # =========================================================
                 for juego in juegos_dia:
                     if juego['status'] not in ['Final', 'Game Over']: continue
                     e_local = juego['home_name']
                     e_visita = juego['away_name']
                     if e_local not in MLB_TEAM_WHITELIST or e_visita not in MLB_TEAM_WHITELIST: continue
-                    
+
                     home_id = juego.get('home_id')
                     away_id = juego.get('away_id')
 
                     p_local, p_visita = get_starting_pitchers(juego)
                     elo_l = df_filtrado_aud[df_filtrado_aud['Local'] == e_local].tail(1)['Elo_L'].values[0] if len(df_filtrado_aud[df_filtrado_aud['Local'] == e_local]) > 0 else 1500
                     elo_v = df_filtrado_aud[df_filtrado_aud['Visitante'] == e_visita].tail(1)['Elo_V'].values[0] if len(df_filtrado_aud[df_filtrado_aud['Visitante'] == e_visita]) > 0 else 1500
+                    elo_l += 35
 
                     racha_l = get_recent_form(e_local, df_filtrado_aud)
                     racha_v = get_recent_form(e_visita, df_filtrado_aud)
@@ -996,19 +999,19 @@ if st.session_state.df_mlb is not None:
                     luck_l = get_pythagorean_luck(e_local, df_filtrado_aud)
                     luck_v = get_pythagorean_luck(e_visita, df_filtrado_aud)
                     split_l, split_v = get_splits_win_pct(e_local, e_visita, df_filtrado_aud)
-                    
+
                     whip_l, ip_l = get_pitcher_whip(p_local, fecha_str)
                     whip_v, ip_v = get_pitcher_whip(p_visita, fecha_str)
-                    
+
                     whip_bp_l = get_bullpen_metrics(home_id, fecha_str)
                     whip_bp_v = get_bullpen_metrics(away_id, fecha_str)
 
                     X_auditoria = np.array([[elo_l, elo_v, (racha_l - racha_v), h2h, (luck_l - luck_v), (split_l - split_v)]])
                     prob_ml = clf_principal.predict_proba(X_auditoria)[0][1]
-                    
+
                     pitcher_adj = ((whip_v - whip_l) * 0.10) + ((whip_bp_v - whip_bp_l) * 0.05)
                     prob_final_local = prob_ml + pitcher_adj
-                    
+
                     ganador = e_local if prob_final_local > 0.5 else e_visita
                     pct_bruto = prob_final_local if prob_final_local > 0.5 else 1.0 - prob_final_local
                     pct_final = int(round(max(min(pct_bruto, 0.99), 0.01) * 100))
@@ -1020,30 +1023,50 @@ if st.session_state.df_mlb is not None:
                         elif ganador == e_visita and whip_v < 1.15 and whip_l > 1.35 and ip_v >= 20.0 and whip_bp_v < 1.35:
                             es_alta_seg = True
 
+                    # Evaluación real (aplica a TODAS las jugadas)
+                    r_local = juego.get('home_score', 0)
+                    r_visita = juego.get('away_score', 0)
+                    r_ganador = e_local if r_local > r_visita else e_visita
+                    acierto = (r_ganador == ganador)
+
+                    # Contamos siempre en el TOTAL
+                    total_gan_total += 1
+                    if acierto: aciertos_gan_total += 1
+
+                    # Contamos también en PREMIUM si aplica
                     if es_alta_seg:
-                        r_local = juego.get('home_score', 0)
-                        r_visita = juego.get('away_score', 0)
-                        r_ganador = e_local if r_local > r_visita else e_visita
-                        if r_ganador == ganador: aciertos_gan_premium += 1
                         total_gan_premium += 1
+                        if acierto: aciertos_gan_premium += 1
 
-                # 2. EVALUACIÓN: CAZA-PONCHES
+                # =========================================================
+                # 2. EVALUACIÓN: CAZA-PONCHES (TODAS las jugadas)
+                # =========================================================
                 k_data = get_strikeout_hunters(fecha_str)
-                premium_k_data = [k for k in k_data if '⭐' in k['⚾ Abridor']]
-                
-                premium_over = [k for k in premium_k_data if "Over" in k["🎯 Jugada"]]
 
-                aciertos_over = sum(1 for k in premium_over if '✅' in k['📝 Evaluación'])
-                fallos_over = sum(1 for k in premium_over if '❌' in k['📝 Evaluación'])
-                total_over = aciertos_over + fallos_over
+                # Totales (todas las jugadas Over)
+                over_total = [k for k in k_data if "Over" in k["🎯 Jugada"]]
+                aciertos_over_total = sum(1 for k in over_total if '✅' in k['📝 Evaluación'])
+                fallos_over_total = sum(1 for k in over_total if '❌' in k['📝 Evaluación'])
+                total_over_total = aciertos_over_total + fallos_over_total
+
+                # Premium (⭐)
+                premium_k_data = [k for k in k_data if '⭐' in k['⚾ Abridor']]
+                over_premium = [k for k in premium_k_data if "Over" in k["🎯 Jugada"]]
+                aciertos_over_premium = sum(1 for k in over_premium if '✅' in k['📝 Evaluación'])
+                fallos_over_premium = sum(1 for k in over_premium if '❌' in k['📝 Evaluación'])
+                total_over_premium = aciertos_over_premium + fallos_over_premium
 
                 # CONSOLIDAR RESULTADOS DEL DÍA
                 resultados.append({
                     "Fecha": fecha_str,
+                    "Ganadores Total": f"{aciertos_gan_total}/{total_gan_total}",
                     "Ganadores ⭐": f"{aciertos_gan_premium}/{total_gan_premium}",
-                    "Over K ⭐": f"{aciertos_over}/{total_over}",
-                    "Efect. Ganadores (%)": round(aciertos_gan_premium/total_gan_premium*100, 1) if total_gan_premium else 0,
-                    "Efect. Over K (%)": round(aciertos_over/total_over*100, 1) if total_over else 0
+                    "Over K Total": f"{aciertos_over_total}/{total_over_total}",
+                    "Over K ⭐": f"{aciertos_over_premium}/{total_over_premium}",
+                    "Efect. Gan. Total (%)": round(aciertos_gan_total/total_gan_total*100, 1) if total_gan_total else 0,
+                    "Efect. Gan. ⭐ (%)": round(aciertos_gan_premium/total_gan_premium*100, 1) if total_gan_premium else 0,
+                    "Efect. Over Total (%)": round(aciertos_over_total/total_over_total*100, 1) if total_over_total else 0,
+                    "Efect. Over ⭐ (%)": round(aciertos_over_premium/total_over_premium*100, 1) if total_over_premium else 0,
                 })
 
                 barra_progreso.progress((idx + 1) / len(fechas_auditar))
@@ -1058,31 +1081,70 @@ if st.session_state.df_mlb is not None:
             resultados = st.session_state.auditoria_7dias
             if resultados:
                 df_aud = pd.DataFrame(resultados)
-                st.markdown("### 📈 Resultados Diarios (Solo Jugadas ⭐)")
+                st.markdown("### 📈 Resultados Diarios (Total vs Premium)")
                 st.dataframe(df_aud, use_container_width=True, hide_index=True)
-                
+
                 excel_auditoria = convertir_df_a_excel(df_aud, "Auditoria")
                 st.download_button(
                     label="📥 Descargar Auditoría Completa (Excel)",
                     data=excel_auditoria,
-                    file_name="auditoria_premium_7dias.xlsx",
+                    file_name="auditoria_completa_7dias.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
 
+                # =========================================================
                 # CÁLCULOS ACUMULADOS
-                total_gan_acc = sum(int(r["Ganadores ⭐"].split('/')[0]) for r in resultados)
-                total_gan_eval = sum(int(r["Ganadores ⭐"].split('/')[1]) for r in resultados)
-                
-                total_over_acc = sum(int(r["Over K ⭐"].split('/')[0]) for r in resultados)
-                total_over_eval = sum(int(r["Over K ⭐"].split('/')[1]) for r in resultados)
+                # =========================================================
+                def _acc(col_name):
+                    a = sum(int(r[col_name].split('/')[0]) for r in resultados)
+                    t = sum(int(r[col_name].split('/')[1]) for r in resultados)
+                    return a, t
+
+                gan_tot_acc, gan_tot_eval = _acc("Ganadores Total")
+                gan_pre_acc, gan_pre_eval = _acc("Ganadores ⭐")
+                over_tot_acc, over_tot_eval = _acc("Over K Total")
+                over_pre_acc, over_pre_eval = _acc("Over K ⭐")
 
                 st.markdown("---")
-                st.markdown("### 📊 Resumen Acumulado de Élite (7 días)")
-                
-                col1, col2 = st.columns(2)
-                
-                col1.metric("Ganadores Premium", f"{total_gan_acc}/{total_gan_eval}", f"{round(total_gan_acc/total_gan_eval*100,1)}%" if total_gan_eval else "0%")
-                col2.metric("Over K Premium", f"{total_over_acc}/{total_over_eval}", f"{round(total_over_acc/total_over_eval*100,1)}%" if total_over_eval else "0%")
+                st.markdown("### 📊 Resumen Acumulado (7 días)")
+
+                # Fila 1: A GANAR
+                st.markdown("#### 🎯 Módulo A Ganar")
+                c1, c2 = st.columns(2)
+                c1.metric(
+                    "Total (Todas las jugadas)",
+                    f"{gan_tot_acc}/{gan_tot_eval}",
+                    f"{round(gan_tot_acc/gan_tot_eval*100,1)}%" if gan_tot_eval else "0%"
+                )
+                c2.metric(
+                    "⭐ Premium",
+                    f"{gan_pre_acc}/{gan_pre_eval}",
+                    f"{round(gan_pre_acc/gan_pre_eval*100,1)}%" if gan_pre_eval else "0%"
+                )
+
+                # Fila 2: CAZA-PONCHES
+                st.markdown("#### 🔥 Módulo Caza-Ponches")
+                c3, c4 = st.columns(2)
+                c3.metric(
+                    "Total (Todos los Overs)",
+                    f"{over_tot_acc}/{over_tot_eval}",
+                    f"{round(over_tot_acc/over_tot_eval*100,1)}%" if over_tot_eval else "0%"
+                )
+                c4.metric(
+                    "⭐ Premium",
+                    f"{over_pre_acc}/{over_pre_eval}",
+                    f"{round(over_pre_acc/over_pre_eval*100,1)}%" if over_pre_eval else "0%"
+                )
+
+                # Comparativa de valor premium
+                st.markdown("---")
+                st.markdown("### 🧠 ¿Vale la pena esperar la estrella ⭐?")
+                if gan_tot_eval and gan_pre_eval:
+                    delta_gan = (gan_pre_acc/gan_pre_eval*100) - (gan_tot_acc/gan_tot_eval*100)
+                    st.markdown(f"* **A Ganar:** El filtro ⭐ aporta una diferencia de **{delta_gan:+.1f}%** en efectividad vs. el total.")
+                if over_tot_eval and over_pre_eval:
+                    delta_over = (over_pre_acc/over_pre_eval*100) - (over_tot_acc/over_tot_eval*100)
+                    st.markdown(f"* **Caza-Ponches:** El filtro ⭐ aporta una diferencia de **{delta_over:+.1f}%** en efectividad vs. el total.")
             else:
                 st.warning("No se encontraron juegos finalizados en los últimos 7 días.")
                 
